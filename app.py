@@ -1,48 +1,30 @@
 import streamlit as st
 import pandas as pd
 import requests
-from bs4 import BeautifulSoup
-import re
 import io
+import re
 
 # =========================================================
-# UI (SIMILAR STYLE)
+# UI
 # =========================================================
-st.set_page_config(page_title="AI Price Comparison", layout="wide")
+st.set_page_config(page_title="AI Product Comparison", layout="wide")
 
 st.markdown("""
 <style>
 .stApp {
     background-color: #0b0f19;
-    color: #e5e7eb;
+    color: white;
 }
 
 .stButton > button {
-    background: linear-gradient(90deg, #6366f1, #3b82f6);
-    color: white;
-    border-radius: 10px;
+    background: linear-gradient(90deg,#6366f1,#3b82f6);
+    color:white;
+    border-radius:10px;
 }
 
 .stDownloadButton > button {
-    background-color: white !important;
-    color: black !important;
-    font-weight: 600;
-    border-radius: 8px;
-}
-
-label {
-    color: white !important;
-}
-
-section[data-testid="stSidebar"] {
-    background-color: #0b0f19 !important;
-}
-
-.card {
-    background:#111827;
-    padding:15px;
-    border-radius:12px;
-    margin-bottom:10px;
+    background:white !important;
+    color:black !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -52,151 +34,15 @@ st.title("🛒 AI Product Price Comparison")
 # =========================================================
 # SIDEBAR
 # =========================================================
-platforms = st.sidebar.multiselect(
-    "🛍 Select Platforms",
-    [
-        "Pantaloons",
-        "Lifestyle",
-        "Myntra",
-        "Ajio"
-    ],
-    default=["Pantaloons", "Lifestyle"]
+api_key = st.sidebar.text_input(
+    "🔑 SerpAPI Key",
+    type="password"
 )
 
-# =========================================================
-# HELPERS
-# =========================================================
-headers = {
-    "User-Agent": "Mozilla/5.0"
-}
-
-# =========================================================
-# PANTALOONS SCRAPER
-# =========================================================
-def scrape_pantaloons(query):
-
-    products = []
-
-    try:
-
-        url = f"https://www.pantaloons.com/search?q={query}"
-
-        r = requests.get(url, headers=headers, timeout=20)
-
-        soup = BeautifulSoup(r.text, "html.parser")
-
-        text = soup.get_text(" ")
-
-        prices = re.findall(r"₹\s?[\d,]+", text)
-
-        for i, p in enumerate(prices[:10]):
-
-            products.append({
-                "Platform": "Pantaloons",
-                "Product": f"{query.title()} Item {i+1}",
-                "Price": p
-            })
-
-    except:
-        pass
-
-    return products
-
-# =========================================================
-# LIFESTYLE SCRAPER
-# =========================================================
-def scrape_lifestyle(query):
-
-    products = []
-
-    try:
-
-        url = f"https://www.lifestylestores.com/in/en/search?q={query}"
-
-        r = requests.get(url, headers=headers, timeout=20)
-
-        soup = BeautifulSoup(r.text, "html.parser")
-
-        text = soup.get_text(" ")
-
-        prices = re.findall(r"₹\s?[\d,]+", text)
-
-        for i, p in enumerate(prices[:10]):
-
-            products.append({
-                "Platform": "Lifestyle",
-                "Product": f"{query.title()} Item {i+1}",
-                "Price": p
-            })
-
-    except:
-        pass
-
-    return products
-
-# =========================================================
-# MYNTRA SCRAPER
-# =========================================================
-def scrape_myntra(query):
-
-    products = []
-
-    try:
-
-        url = f"https://www.myntra.com/{query}"
-
-        r = requests.get(url, headers=headers, timeout=20)
-
-        soup = BeautifulSoup(r.text, "html.parser")
-
-        text = soup.get_text(" ")
-
-        prices = re.findall(r"Rs\.?\s?[\d,]+", text)
-
-        for i, p in enumerate(prices[:10]):
-
-            products.append({
-                "Platform": "Myntra",
-                "Product": f"{query.title()} Item {i+1}",
-                "Price": p
-            })
-
-    except:
-        pass
-
-    return products
-
-# =========================================================
-# AJIO SCRAPER
-# =========================================================
-def scrape_ajio(query):
-
-    products = []
-
-    try:
-
-        url = f"https://www.ajio.com/search/?text={query}"
-
-        r = requests.get(url, headers=headers, timeout=20)
-
-        soup = BeautifulSoup(r.text, "html.parser")
-
-        text = soup.get_text(" ")
-
-        prices = re.findall(r"₹\s?[\d,]+", text)
-
-        for i, p in enumerate(prices[:10]):
-
-            products.append({
-                "Platform": "Ajio",
-                "Product": f"{query.title()} Item {i+1}",
-                "Price": p
-            })
-
-    except:
-        pass
-
-    return products
+country = st.sidebar.selectbox(
+    "🌍 Country",
+    ["India", "US"]
+)
 
 # =========================================================
 # SEARCH
@@ -206,54 +52,127 @@ query = st.text_input(
     placeholder="Example: black jeans"
 )
 
+# =========================================================
+# FETCH PRODUCTS
+# =========================================================
+def fetch_products(query):
+
+    params = {
+        "engine": "google_shopping",
+        "q": query,
+        "api_key": api_key
+    }
+
+    if country == "India":
+        params["gl"] = "in"
+
+    response = requests.get(
+        "https://serpapi.com/search",
+        params=params,
+        timeout=30
+    )
+
+    data = response.json()
+
+    results = data.get("shopping_results", [])
+
+    products = []
+
+    for item in results:
+
+        title = item.get("title", "")
+        price = item.get("price", "")
+        source = item.get("source", "")
+        link = item.get("link", "")
+        thumbnail = item.get("thumbnail", "")
+        rating = item.get("rating", "")
+
+        products.append({
+            "Product": title,
+            "Price": price,
+            "Platform": source,
+            "Rating": rating,
+            "Link": link,
+            "Image": thumbnail
+        })
+
+    return products
+
+# =========================================================
+# PRICE EXTRACTION
+# =========================================================
+def extract_price(p):
+
+    nums = re.sub(r"[^\d]", "", str(p))
+
+    return int(nums) if nums else 999999
+
+# =========================================================
+# COMPARE
+# =========================================================
 if st.button("Compare Prices"):
+
+    if not api_key:
+        st.warning("Enter SerpAPI key")
+        st.stop()
 
     if not query:
         st.warning("Enter product name")
         st.stop()
 
-    all_products = []
+    with st.spinner("Fetching real products..."):
 
-    with st.spinner("Searching products..."):
+        products = fetch_products(query)
 
-        if "Pantaloons" in platforms:
-            all_products.extend(scrape_pantaloons(query))
+    if not products:
+        st.error("No products found")
+        st.stop()
 
-        if "Lifestyle" in platforms:
-            all_products.extend(scrape_lifestyle(query))
+    df = pd.DataFrame(products)
 
-        if "Myntra" in platforms:
-            all_products.extend(scrape_myntra(query))
+    df["price_num"] = df["Price"].apply(extract_price)
 
-        if "Ajio" in platforms:
-            all_products.extend(scrape_ajio(query))
+    df = df.sort_values("price_num")
 
     # =====================================================
-    # FALLBACK
+    # SHOW TABLE
     # =====================================================
-    if not all_products:
-
-        all_products = [
-            {
-                "Platform": "Demo",
-                "Product": f"{query.title()} Slim Fit",
-                "Price": "₹1999"
-            },
-            {
-                "Platform": "Demo",
-                "Product": f"{query.title()} Regular Fit",
-                "Price": "₹2499"
-            }
-        ]
-
-    # =====================================================
-    # DATAFRAME
-    # =====================================================
-    df = pd.DataFrame(all_products)
-
     st.success(f"Found {len(df)} products")
 
-    st.dataframe(df)
+    st.dataframe(
+        df[[
+            "Product",
+            "Price",
+            "Platform",
+            "Rating"
+        ]]
+    )
+
+    # =====================================================
+    # CHEAPEST
+    # =====================================================
+    st.subheader("🏆 Cheapest Deals")
+
+    cheapest = df.head(5)
+
+    for _, row in cheapest.iterrows():
+
+        st.markdown(f"""
+        <div style="
+            background:#111827;
+            padding:15px;
+            border-radius:12px;
+            margin-bottom:10px;
+        ">
+            <h4>{row['Product']}</h4>
+            <p>🏬 {row['Platform']}</p>
+            <h3>{row['Price']}</h3>
+            <p>⭐ {row['Rating']}</p>
+            <a href="{row['Link']}" target="_blank">
+                View Product
+            </a>
+        </div>
+        """, unsafe_allow_html=True)
 
     # =====================================================
     # DOWNLOADS
@@ -289,28 +208,3 @@ if st.button("Compare Prices"):
             buffer,
             "products.xlsx"
         )
-
-    # =====================================================
-    # CHEAPEST
-    # =====================================================
-    st.subheader("🏆 Cheapest Products")
-
-    def extract_price(p):
-
-        nums = re.sub(r"[^\d]", "", str(p))
-
-        return int(nums) if nums else 999999
-
-    df["price_num"] = df["Price"].apply(extract_price)
-
-    cheapest = df.sort_values("price_num").head(5)
-
-    for _, row in cheapest.iterrows():
-
-        st.markdown(f"""
-        <div class="card">
-            <h4>{row['Product']}</h4>
-            <p>🏬 {row['Platform']}</p>
-            <h3>{row['Price']}</h3>
-        </div>
-        """, unsafe_allow_html=True)
