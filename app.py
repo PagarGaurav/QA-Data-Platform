@@ -4,15 +4,11 @@ import json
 import os
 import uuid
 import io
-import random
 from datetime import datetime
-from faker import Faker
 from openai import OpenAI
 
-fake = Faker()
-
 # -----------------------------
-# UI (DO NOT TOUCH)
+# UI (DO NOT CHANGE)
 # -----------------------------
 st.set_page_config(page_title="AI Data Generator", layout="wide")
 
@@ -97,7 +93,7 @@ class Storage:
 storage = Storage(DATA_FILE)
 
 # -----------------------------
-# SCHEMA (ONLY STRUCTURE)
+# SCHEMA EXTRACTION (ONLY STRUCTURE)
 # -----------------------------
 def extract_schema(prompt):
 
@@ -106,7 +102,6 @@ Return ONLY JSON array:
 [
   {"name": "column"}
 ]
-No explanation.
 """
 
     res = client.chat.completions.create(
@@ -126,75 +121,64 @@ No explanation.
     return json.loads(content[start:end])
 
 # -----------------------------
-# 🚀 FINAL FAST GENERATION ENGINE
+# 🚀 FINAL BULLETPROOF GENERATOR
 # -----------------------------
 def generate(fields, rows, prompt):
 
-    data = []
+    system = """
+You are a strict enterprise synthetic data generator.
 
-    for _ in range(rows):
+OUTPUT RULES:
+- Return ONLY a JSON array (no wrapper object)
+- Each object must match given columns exactly
+- Must generate realistic, consistent data
+- No explanations, no markdown
+- No fake sentences or garbage text
+"""
 
-        row = {}
+    res = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": f"""
+Prompt:
+{prompt}
 
-        name = fake.name()
-        first = name.split()[0].lower()
+Columns:
+{json.dumps(fields)}
 
-        email = f"{first}{random.randint(10,999)}@gmail.com"
-        phone = f"+91-{random.randint(70000,99999)}-{random.randint(10000,99999)}"
+Rows required:
+{rows}
 
-        for f in fields:
+Return ONLY JSON array.
+"""}
+        ],
+        temperature=0.2
+    )
 
-            col = f["name"].lower()
+    content = res.choices[0].message.content
 
-            # ---------------- SMART RULE ENGINE ----------------
+    try:
+        data = json.loads(content)
 
-            if "name" in col:
-                row[col] = name
+        if not isinstance(data, list):
+            raise ValueError("Invalid format")
 
-            elif "email" in col:
-                row[col] = email
+        if len(data) == 0:
+            raise ValueError("Empty output")
 
-            elif "phone" in col or "mobile" in col:
-                row[col] = phone
+        if len(data) > rows:
+            data = data[:rows]
 
-            elif "address" in col or "city" in col:
-                row[col] = f"{fake.city()}, {fake.country()}"
+        df = pd.DataFrame(data)
+        df.index = range(1, len(df) + 1)
 
-            elif "id" in col:
-                row[col] = str(uuid.uuid4())[:10]
+        return df
 
-            elif "age" in col:
-                row[col] = random.randint(18, 60)
-
-            elif "salary" in col or "amount" in col or "price" in col:
-                row[col] = random.randint(30000, 200000)
-
-            elif "date" in col:
-                row[col] = fake.date_between("-3y", "today").isoformat()
-
-            elif "role" in col or "designation" in col:
-                row[col] = random.choice([
-                    "Software Engineer",
-                    "Data Analyst",
-                    "Product Manager",
-                    "HR Executive",
-                    "Consultant"
-                ])
-
-            elif "status" in col:
-                row[col] = random.choice([
-                    "Active", "Inactive", "Pending", "Completed"
-                ])
-
-            else:
-                row[col] = fake.word()
-
-        data.append(row)
-
-    df = pd.DataFrame(data)
-    df.index = range(1, len(df) + 1)
-
-    return df
+    except Exception:
+        st.error("Invalid response from model")
+        st.code(content)
+        st.stop()
 
 # -----------------------------
 # SESSION
