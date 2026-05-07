@@ -13,7 +13,7 @@ import re
 fake = Faker()
 
 # -----------------------------
-# UI CONFIG
+# UI
 # -----------------------------
 st.set_page_config(page_title="AI Data Generator", layout="wide")
 
@@ -32,12 +32,18 @@ st.markdown("""
     border-radius: 10px;
 }
 
-/* Download buttons FIX */
+/* Download buttons */
 .stDownloadButton > button {
     background-color: white !important;
     color: black !important;
     font-weight: 600;
     border-radius: 8px;
+}
+
+/* Sidebar label fix */
+[data-testid="stSidebar"] label {
+    color: black !important;
+    font-weight: 600;
 }
 
 /* Cards */
@@ -59,7 +65,6 @@ st.markdown("""
     color: #9ca3af;
 }
 
-/* Labels */
 label {
     color: white !important;
     font-weight: 500;
@@ -291,7 +296,6 @@ with tab1:
 
     if st.session_state.df is not None:
 
-        # CLEAN TITLE ONLY (NO JSON)
         st.markdown(f"""
         <div style="
             background:#111827;
@@ -330,7 +334,7 @@ with tab1:
 
 
 # =============================
-# 📂 HISTORY
+# 📂 HISTORY (SEARCH + FILTER)
 # =============================
 with tab2:
 
@@ -342,15 +346,43 @@ with tab2:
             st.success("All history deleted")
             st.rerun()
 
-    st.subheader("📂 Dataset History")
-
     data = storage.get_all()
 
     if not data:
         st.info("No history found")
         st.stop()
 
-    for item in reversed(data):
+    # -----------------------------
+    # SEARCH + FILTER
+    # -----------------------------
+    col1, col2 = st.columns(2)
+
+    with col1:
+        search = st.text_input("🔍 Search dataset (name / id)")
+
+    with col2:
+        domains = list(set([d.get("domain") for d in data]))
+        selected_domain = st.selectbox("🎯 Filter by domain", ["All"] + domains)
+
+    filtered = data
+
+    if search:
+        filtered = [
+            d for d in filtered
+            if search.lower() in d.get("name", "").lower()
+            or search.lower() in d.get("id", "").lower()
+        ]
+
+    if selected_domain != "All":
+        filtered = [
+            d for d in filtered
+            if d.get("domain") == selected_domain
+        ]
+
+    # -----------------------------
+    # HISTORY CARDS
+    # -----------------------------
+    for item in reversed(filtered):
 
         fields_preview = ", ".join([f["name"] for f in item.get("fields", [])])
 
