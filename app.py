@@ -6,6 +6,8 @@ import json
 import os
 import uuid
 from datetime import datetime
+from openai import OpenAI
+import re
 import io
 
 fake = Faker()
@@ -46,6 +48,12 @@ section[data-testid="stSidebar"] {
 """, unsafe_allow_html=True)
 
 st.title("🧠 AI Data Generator")
+
+# -----------------------------
+# OPENAI
+# -----------------------------
+api_key = st.sidebar.text_input("🔑 OpenAI API Key", type="password")
+client = OpenAI(api_key=api_key) if api_key else None
 
 # -----------------------------
 # STORAGE
@@ -90,7 +98,52 @@ class Storage:
 storage = Storage(DATA_FILE)
 
 # -----------------------------
-# SIMPLE VALUE ENGINE
+# SAFE SCHEMA FROM OPENAI (CONTROLLED)
+# -----------------------------
+def extract_schema(prompt):
+
+    system = """
+You are a strict data schema generator.
+
+Return ONLY valid JSON array:
+
+[
+  {"name": "column_name", "type": "id|email|phone|name|status|int|float|date|text|role|password"}
+]
+
+Rules:
+- no explanation
+- no markdown
+- no extra text
+- clean column names only
+"""
+
+    res = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt}
+        ]
+    )
+
+    content = res.choices[0].message.content.strip()
+
+    # strict JSON extraction safety
+    content = re.sub(r"```json", "", content)
+    content = re.sub(r"```", "", content)
+
+    try:
+        start = content.index("[")
+        end = content.rindex("]") + 1
+        schema = json.loads(content[start:end])
+    except:
+        schema = [{"name": "id", "type": "id"},
+                  {"name": "name", "type": "name"}]
+
+    return schema
+
+# -----------------------------
+# VALUE ENGINE (DETERMINISTIC)
 # -----------------------------
 def gen_value(t):
 
@@ -109,21 +162,22 @@ def gen_value(t):
     if t == "status":
         return random.choice(["ACTIVE", "INACTIVE", "BLOCKED", "PENDING"])
 
+    if t == "role":
+        return random.choice(["ADMIN", "USER", "MANAGER"])
+
+    if t == "password":
+        return fake.password(length=10, special_chars=False)
+
     if t == "int":
         return random.randint(1, 9999)
 
-    return fake.word()
+    if t == "float":
+        return round(random.uniform(100, 100000), 2)
 
-# -----------------------------
-# SCHEMA
-# -----------------------------
-def extract_schema(prompt):
-    return [
-        {"name": "id", "type": "id"},
-        {"name": "name", "type": "name"},
-        {"name": "email", "type": "email"},
-        {"name": "status", "type": "status"}
-    ]
+    if t == "date":
+        return fake.date_this_year().isoformat()
+
+    return fake.word()
 
 # -----------------------------
 # GENERATOR
@@ -133,9 +187,7 @@ def generate(schema, rows):
     data = []
 
     for _ in range(rows):
-        row = {}
-        for f in schema:
-            row[f["name"]] = gen_value(f["type"])
+        row = {f["name"]: gen_value(f["type"]) for f in schema}
         data.append(row)
 
     df = pd.DataFrame(data)
@@ -163,6 +215,10 @@ with tab1:
     rows = st.number_input("📊 Rows", min_value=1, value=10)
 
     if st.button("Generate"):
+
+        if not client:
+            st.error("Please add OpenAI API key")
+            st.stop()
 
         schema = extract_schema(prompt)
         df = generate(schema, rows)
@@ -235,7 +291,6 @@ with tab2:
 
         col1, col2, col3 = st.columns(3)
 
-        # CSV
         with col1:
             st.download_button(
                 "⬇ CSV",
@@ -243,7 +298,6 @@ with tab2:
                 file_name=f"{item['id']}.csv"
             )
 
-        # JSON
         with col2:
             st.download_button(
                 "⬇ JSON",
@@ -251,7 +305,6 @@ with tab2:
                 file_name=f"{item['id']}.json"
             )
 
-        # EXCEL
         with col3:
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
@@ -263,10 +316,5 @@ with tab2:
                 buffer,
                 file_name=f"{item['id']}.xlsx"
             )
-
-        # DELETE BUTTON
-        if st.button("🗑 Delete", key=item["id"]):
-            storage.delete(item["id"])
-            st.rerun()
 
         st.markdown("---")
