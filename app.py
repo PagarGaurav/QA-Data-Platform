@@ -83,6 +83,11 @@ class Storage:
         data.append(item)
         self._write(data)
 
+    def delete(self, item_id):
+        data = self._read()
+        data = [x for x in data if x.get("id") != item_id]
+        self._write(data)
+
     def clear_all(self):
         self._write([])
 
@@ -92,103 +97,43 @@ class Storage:
 storage = Storage(DATA_FILE)
 
 # -----------------------------
-# DOMAIN DETECTION (SAFE)
-# -----------------------------
-def detect_domain(prompt):
-    p = prompt.lower()
-
-    if "login" in p or "auth" in p:
-        return "login"
-    if "bank" in p:
-        return "bank"
-    if "medical" in p:
-        return "medical"
-    return "generic"
-
-# -----------------------------
-# OPENAI SCHEMA NORMALIZATION (ONLY PLACE OPENAI USED)
-# -----------------------------
-def get_schema_from_openai(prompt):
-
-    system = """
-You are a data architect.
-
-Convert user request into structured dataset schema.
-
-Return ONLY JSON array:
-
-[
-  {"name": "column_name", "type": "one_of: id, email, phone, name, int, float, status, date, text, role, password"}
-]
-
-Rules:
-- no explanation
-- no extra text
-- clean column names only
-"""
-
-    res = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": prompt}
-        ]
-    )
-
-    raw = res.choices[0].message.content.strip()
-
-    raw = re.sub(r"```json", "", raw)
-    raw = re.sub(r"```", "", raw).strip()
-
-    try:
-        start = raw.index("[")
-        end = raw.rindex("]") + 1
-        schema = json.loads(raw[start:end])
-    except:
-        schema = [{"name": "id", "type": "id"},
-                  {"name": "name", "type": "name"}]
-
-    return schema
-
-# -----------------------------
-# VALUE ENGINE (STRICT + CORRECT)
+# SAFE VALUE GENERATOR (UNCHANGED)
 # -----------------------------
 def gen_value(t):
 
     if t == "id":
         return str(uuid.uuid4())[:10]
-
     if t == "email":
         return fake.email()
-
     if t == "phone":
         return "+91" + str(random.randint(6000000000, 9999999999))
-
     if t == "name":
         return fake.name()
-
     if t == "password":
         return fake.password(length=10, special_chars=False)
-
     if t == "role":
         return random.choice(["ADMIN", "USER", "MANAGER"])
-
     if t == "status":
         return random.choice(["ACTIVE", "INACTIVE", "BLOCKED", "PENDING"])
-
     if t == "int":
         return random.randint(1, 9999)
-
     if t == "float":
         return round(random.uniform(100, 100000), 2)
-
     if t == "date":
         return fake.date_this_year().isoformat()
 
-    if t == "text":
-        return fake.word()
-
     return fake.word()
+
+# -----------------------------
+# SCHEMA (SIMPLE)
+# -----------------------------
+def extract_schema(prompt):
+    return [
+        {"name": "id", "type": "id"},
+        {"name": "name", "type": "name"},
+        {"name": "email", "type": "email"},
+        {"name": "status", "type": "status"}
+    ]
 
 # -----------------------------
 # GENERATOR
@@ -215,10 +160,13 @@ if "df" not in st.session_state:
     st.session_state.df = None
 
 # -----------------------------
-# UI TABS (UNCHANGED)
+# TABS
 # -----------------------------
 tab1, tab2 = st.tabs(["🚀 Generate", "📂 History"])
 
+# =============================
+# GENERATE
+# =============================
 with tab1:
 
     prompt = st.text_area("💬 Describe dataset")
@@ -226,11 +174,7 @@ with tab1:
 
     if st.button("Generate"):
 
-        if not client:
-            st.error("Please add OpenAI API key")
-            st.stop()
-
-        schema = get_schema_from_openai(prompt)
+        schema = extract_schema(prompt)
         df = generate(schema, rows)
 
         st.session_state.df = df
@@ -264,7 +208,18 @@ with tab1:
                 file_name="data.json"
             )
 
+# =============================
+# 📂 HISTORY (FIXED UI)
+# =============================
 with tab2:
+
+    # TOP RIGHT: DELETE ALL
+    colA, colB = st.columns([8, 2])
+
+    with colB:
+        if st.button("🗑 Delete All History"):
+            storage.clear_all()
+            st.rerun()
 
     data = storage.get_all()
 
@@ -275,18 +230,42 @@ with tab2:
     for item in reversed(data):
 
         st.markdown(f"""
-        <div style="background:#111827;padding:12px;border-radius:12px;margin-bottom:10px;">
-            <h4 style="color:white;">📦 {item.get('name')}</h4>
+        <div style="
+            background:#111827;
+            padding:10px;
+            border-radius:12px;
+            margin-bottom:8px;">
+            <h4 style="color:white;margin:0;">📦 {item.get('name')}</h4>
         </div>
         """, unsafe_allow_html=True)
 
         schema = item.get("schema", [])
 
+        # LIMIT ROWS (NO BLANK CELLS FIX)
+        preview_rows = 3
+
         preview = pd.DataFrame([
             {f["name"]: gen_value(f["type"]) for f in schema}
-            for _ in range(3)
+            for _ in range(preview_rows)
         ])
 
-        st.dataframe(preview, height=250)
+        # REMOVE EMPTY / NAN CELLS SAFELY
+        preview = preview.fillna("")
+
+        st.dataframe(preview, height=200)
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.download_button(
+                "⬇ Download CSV",
+                preview.to_csv(index=False),
+                file_name=f"{item['id']}.csv"
+            )
+
+        with col2:
+            if st.button("🗑 Delete", key=item["id"]):
+                storage.delete(item["id"])
+                st.rerun()
 
         st.markdown("---")
