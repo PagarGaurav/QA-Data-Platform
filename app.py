@@ -12,7 +12,7 @@ from openai import OpenAI
 fake = Faker()
 
 # -----------------------------
-# UI (UNCHANGED)
+# UI (NO CHANGE)
 # -----------------------------
 st.set_page_config(page_title="AI Data Generator", layout="wide")
 
@@ -54,11 +54,11 @@ st.title("🧠 AI Data Generator")
 api_key = st.sidebar.text_input("🔑 OpenAI API Key", type="password")
 client = OpenAI(api_key=api_key) if api_key else None
 
-DATA_FILE = "storage.json"
-
 # -----------------------------
 # STORAGE
 # -----------------------------
+DATA_FILE = "storage.json"
+
 class Storage:
     def __init__(self, file):
         self.file = file
@@ -97,7 +97,7 @@ class Storage:
 storage = Storage(DATA_FILE)
 
 # -----------------------------
-# SCHEMA FROM OPENAI (FULLY DYNAMIC)
+# SCHEMA (PURE UNIVERSAL - NO DOMAIN LOGIC)
 # -----------------------------
 def extract_schema(prompt):
 
@@ -106,18 +106,17 @@ def extract_schema(prompt):
         st.stop()
 
     system = """
-You are a dataset schema generator.
+You generate dataset schema.
 
-Return ONLY JSON array like:
+Return ONLY JSON array:
 [
-  {"name": "any_column_name", "type": "name|email|phone|address|pincode|id|int|float|date|string|status"}
+  {"name": "column_name", "type": "name|email|phone|id|address|number|date|text"}
 ]
 
 Rules:
-- You can create ANY column names based on user request
-- Do NOT restrict domain
-- Only ensure correct type assignment
-- No explanation
+- DO NOT assume any domain (no student/HR/bank logic)
+- ONLY infer structure from prompt
+- Keep it minimal but valid
 """
 
     res = client.chat.completions.create(
@@ -139,13 +138,13 @@ Rules:
         st.stop()
 
 # -----------------------------
-# VALIDATION (TYPE ONLY, NO COLUMN LOSS)
+# VALIDATION (TYPE ONLY, NO COLUMN FILTERING)
 # -----------------------------
 def validate_schema(schema):
 
     allowed_types = {
-        "name","email","phone","address","pincode",
-        "id","int","float","date","string","status"
+        "name","email","phone","id",
+        "address","number","date","text"
     }
 
     clean = []
@@ -153,54 +152,17 @@ def validate_schema(schema):
     for f in schema:
 
         name = f.get("name","col").strip().lower()
-        t = f.get("type","string").strip().lower()
+        t = f.get("type","text").strip().lower()
 
         if t not in allowed_types:
-            t = "string"
+            t = "text"
 
         clean.append({"name": name, "type": t})
 
     return clean
 
 # -----------------------------
-# VALUE ENGINE (TYPE BASED ONLY)
-# -----------------------------
-def gen_value(t, col_name):
-
-    if t == "email":
-        return fake.email()
-
-    if t == "phone":
-        return "+91" + str(random.randint(6000000000, 9999999999))
-
-    if t == "address":
-        return fake.address().replace("\n", ", ")
-
-    if t == "pincode":
-        return random.randint(100000, 999999)
-
-    if t == "name":
-        return fake.name()
-
-    if t == "id":
-        return str(uuid.uuid4())[:10]
-
-    if t == "int":
-        return random.randint(1, 9999)
-
-    if t == "float":
-        return round(random.uniform(100, 100000), 2)
-
-    if t == "date":
-        return fake.date_this_year().isoformat()
-
-    if t == "status":
-        return random.choice(["ACTIVE","INACTIVE","PENDING","BLOCKED"])
-
-    return fake.word()
-
-# -----------------------------
-# GENERATOR
+# UNIVERSAL GENERATION ENGINE
 # -----------------------------
 def generate(fields, rows):
 
@@ -208,10 +170,42 @@ def generate(fields, rows):
 
     for _ in range(rows):
 
+        # consistent identity per row
+        base_name = fake.name()
+        base_email = fake.email()
+        base_phone = "+91" + str(random.randint(6000000000, 9999999999))
+        base_address = fake.address().replace("\n", ", ")
+
         row = {}
 
         for f in fields:
-            row[f["name"]] = gen_value(f["type"], f["name"])
+
+            t = f["type"]
+            n = f["name"]
+
+            if t == "name":
+                row[n] = base_name
+
+            elif t == "email":
+                row[n] = base_email
+
+            elif t == "phone":
+                row[n] = base_phone
+
+            elif t == "address":
+                row[n] = base_address
+
+            elif t == "id":
+                row[n] = str(uuid.uuid4())[:10]
+
+            elif t == "number":
+                row[n] = random.randint(1, 99999)
+
+            elif t == "date":
+                row[n] = fake.date_this_year().isoformat()
+
+            else:
+                row[n] = fake.word()
 
         data.append(row)
 
@@ -231,6 +225,9 @@ if "df" not in st.session_state:
 # -----------------------------
 tab1, tab2 = st.tabs(["🚀 Generate", "📂 History"])
 
+# =============================
+# GENERATE
+# =============================
 with tab1:
 
     prompt = st.text_area("💬 Describe dataset")
@@ -271,6 +268,9 @@ with tab1:
             buffer.seek(0)
             st.download_button("Excel", buffer, "data.xlsx")
 
+# =============================
+# HISTORY
+# =============================
 with tab2:
 
     data = storage.get_all()
