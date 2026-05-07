@@ -37,19 +37,24 @@ st.markdown("""
     border-radius: 8px;
 }
 
-/* -----------------------------
-   🔑 API KEY FIX (NEW ADDITION)
-------------------------------*/
-section[data-testid="stSidebar"] label {
-    color: #000000 !important;
-    font-weight: 600;
+label {
+    color: white !important;
 }
 
-section[data-testid="stSidebar"] input {
+/* -----------------------------
+   🔑 ONLY API KEY FIELD FIX
+------------------------------*/
+section[data-testid="stSidebar"] input[aria-label="🔑 OpenAI API Key"] {
     background-color: #ffffff !important;
     color: #000000 !important;
-    border-radius: 8px;
     border: 1px solid #d1d5db !important;
+    border-radius: 8px;
+}
+
+/* Label only for API key */
+section[data-testid="stSidebar"] label:has(+ input[aria-label="🔑 OpenAI API Key"]) {
+    color: #000000 !important;
+    font-weight: 600;
 }
 
 </style>
@@ -112,7 +117,7 @@ storage = Storage(DATA_FILE)
 
 
 # -----------------------------
-# SCHEMA (SAFE SIMPLE)
+# SIMPLE SCHEMA
 # -----------------------------
 def smart_schema(prompt):
 
@@ -120,21 +125,13 @@ def smart_schema(prompt):
 
     fields = [{"name": "id", "type": "id"}]
 
-    if any(k in text for k in ["bank", "customer"]):
+    if "bank" in text:
         fields += [
             {"name": "name", "type": "string"},
             {"name": "email", "type": "email"},
             {"name": "phone", "type": "phone"},
             {"name": "amount", "type": "amount"},
             {"name": "status", "type": "string"}
-        ]
-
-    elif any(k in text for k in ["medical", "patient"]):
-        fields += [
-            {"name": "patient_name", "type": "string"},
-            {"name": "age", "type": "int"},
-            {"name": "email", "type": "email"},
-            {"name": "phone", "type": "phone"}
         ]
 
     else:
@@ -149,7 +146,7 @@ def smart_schema(prompt):
 
 
 # -----------------------------
-# VALUE ENGINE (VALID DATA ONLY)
+# VALUE ENGINE (VALID ONLY)
 # -----------------------------
 def gen_value(field):
 
@@ -168,17 +165,11 @@ def gen_value(field):
     if "phone" in name:
         return "+91-" + str(random.randint(6000000000, 9999999999))
 
-    if "age" in name:
-        return random.randint(18, 80)
+    if "status" in name:
+        return random.choice(["ACTIVE", "INACTIVE", "PENDING", "SUCCESS"])
 
     if t == "amount":
         return round(random.uniform(100, 50000), 2)
-
-    if t == "int":
-        return random.randint(1, 9999)
-
-    if "status" in name:
-        return random.choice(["ACTIVE", "INACTIVE", "PENDING", "SUCCESS"])
 
     return "N/A"
 
