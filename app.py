@@ -7,8 +7,15 @@ import json
 import os
 import uuid
 from datetime import datetime
+from openai import OpenAI
 
 fake = Faker()
+
+# -----------------------------
+# 🔑 OPENAI CLIENT
+# -----------------------------
+client = OpenAI(api_key="YOUR_API_KEY")  # <-- add your key
+
 
 # -----------------------------
 # 🎨 UI (UNCHANGED)
@@ -30,7 +37,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🧠 AI Data Generator")
+st.title("🧠 AI Data Generator (OpenAI Powered)")
 
 
 # -----------------------------
@@ -77,75 +84,38 @@ storage = Storage(DATA_FILE)
 
 
 # -----------------------------
-# 🧠 DOMAIN
+# 🧠 OPENAI SCHEMA ENGINE
 # -----------------------------
-def detect_domain(prompt):
-    t = prompt.lower()
+def ai_schema(prompt):
 
-    if any(x in t for x in ["sap", "vendor", "material"]):
-        return "SAP"
+    res = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {
+                "role": "system",
+                "content": """
+You generate dataset schemas.
 
-    if any(x in t for x in ["medical", "patient"]):
-        return "MEDICAL"
+Return ONLY JSON:
+{
+  "domain": "...",
+  "fields": [
+    {"name": "...", "type": "string|int|amount|email"}
+  ]
+}
 
-    if any(x in t for x in ["bank", "account"]):
-        return "BANKING"
+Rules:
+- No explanation
+- Minimal safe schema
+- No hallucinated fields
+"""
+            },
+            {"role": "user", "content": prompt}
+        ],
+        response_format={"type": "json_object"}
+    )
 
-    if any(x in t for x in ["it", "ticket"]):
-        return "IT"
-
-    if any(x in t for x in ["login", "user"]):
-        return "LOGIN"
-
-    return "UNKNOWN"
-
-
-# -----------------------------
-# 🧱 SCHEMA
-# -----------------------------
-def schema_map(domain):
-
-    if domain == "SAP":
-        return [
-            ("vendor", "string"),
-            ("material", "string"),
-            ("quantity", "int"),
-            ("price", "amount"),
-            ("ship_to_party", "string"),
-            ("sold_to_party", "string")
-        ]
-
-    if domain == "MEDICAL":
-        return [
-            ("patient", "string"),
-            ("doctor", "string"),
-            ("diagnosis", "string"),
-            ("hospital", "string")
-        ]
-
-    if domain == "BANKING":
-        return [
-            ("account", "int"),
-            ("balance", "amount"),
-            ("transaction", "amount")
-        ]
-
-    if domain == "IT":
-        return [
-            ("ticket_id", "int"),
-            ("issue", "string"),
-            ("priority", "string")
-        ]
-
-    if domain == "LOGIN":
-        return [
-            ("username", "string"),
-            ("email", "email"),
-            ("password", "string"),
-            ("status", "string")
-        ]
-
-    return None
+    return json.loads(res.choices[0].message.content)
 
 
 # -----------------------------
@@ -168,25 +138,21 @@ def gen_value(t):
     return fake.word()
 
 
-def generate(schema):
+def generate(fields):
     return pd.DataFrame([
-        {c: gen_value(t) for c, t in schema}
+        {f["name"]: gen_value(f["type"]) for f in fields}
         for _ in range(10)
     ])
 
 
 # -----------------------------
-# 🧠 VERSIONING ENGINE
+# 🧠 VERSIONING
 # -----------------------------
 def get_version(data, prompt):
-    count = len([x for x in data if x.get("prompt") == prompt])
-    return f"v{count + 1}"
+    return f"v{len([x for x in data if x.get('prompt') == prompt]) + 1}"
 
 
-# -----------------------------
-# 🧾 RECORD
-# -----------------------------
-def create_record(prompt, schema, domain, data_store):
+def create_record(prompt, domain, fields, data_store):
 
     return {
         "id": str(uuid.uuid4())[:8],
@@ -194,7 +160,7 @@ def create_record(prompt, schema, domain, data_store):
         "domain": domain,
         "version": get_version(data_store, prompt),
         "rows": 10,
-        "cols": [c[0] for c in schema],
+        "cols": [f["name"] for f in fields],
         "created_at": str(datetime.now())
     }
 
@@ -216,37 +182,38 @@ tab1, tab2 = st.tabs(["🚀 Generate", "📂 History"])
 
 
 # =============================
-# 🚀 GENERATE
+# 🚀 GENERATE TAB
 # =============================
 with tab1:
 
     prompt = st.text_area("💬 Describe dataset")
 
-    if st.button("Generate"):
+    if st.button("Generate with AI"):
 
-        domain = detect_domain(prompt)
-        schema = schema_map(domain)
+        try:
+            schema = ai_schema(prompt)
 
-        if not schema:
-            st.error("⚠️ Cannot understand request safely")
-            st.stop()
+            domain = schema["domain"]
+            fields = schema["fields"]
 
-        data_store = storage.get_all()
+            df = generate(fields)
 
-        record = create_record(prompt, schema, domain, data_store)
+            st.session_state.df = df
+            st.session_state.record = create_record(
+                prompt, domain, fields, storage.get_all()
+            )
 
-        df = generate(schema)
+            storage.add(st.session_state.record)
 
-        st.session_state.df = df
-        st.session_state.record = record
+            st.success(f"{domain} dataset generated via OpenAI")
 
-        storage.add(record)
-
-        st.success(f"{domain} dataset generated ({record['version']})")
+        except Exception as e:
+            st.error("AI schema generation failed")
+            st.exception(e)
 
 
     # -----------------------------
-    # RESULT DISPLAY
+    # OUTPUT
     # -----------------------------
     if st.session_state.df is not None:
 
@@ -286,7 +253,7 @@ with tab1:
 
 
 # =============================
-# 📂 HISTORY (VERSION SHOWN)
+# 📂 HISTORY TAB
 # =============================
 with tab2:
 
@@ -317,19 +284,16 @@ with tab2:
 
     filtered = [x for x in data if match(x)]
 
-    st.markdown(f"### 📊 Showing {len(filtered)} records")
-
     for item in reversed(filtered):
 
         with st.expander(
-            f"🧾 {item.get('id')} | {item.get('domain')} | {item.get('version','v1')}"
+            f"🧾 {item.get('id')} | {item.get('domain')} | {item.get('version')}"
         ):
 
             st.write("Prompt:", item.get("prompt"))
             st.write("Domain:", item.get("domain"))
             st.write("Version:", item.get("version"))
             st.write("Columns:", item.get("cols"))
-            st.write("Rows:", item.get("rows"))
             st.write("Time:", item.get("created_at"))
 
             col1, col2 = st.columns(2)
