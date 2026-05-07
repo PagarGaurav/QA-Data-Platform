@@ -41,25 +41,10 @@ st.markdown("""
     border-radius: 8px;
 }
 
-/* Top bar */
-.top-bar {
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-    padding:10px 5px;
-}
-
-.api-box input {
-    background-color: white !important;
-    color: black !important;
-    border-radius: 8px;
-    border: 1px solid #d1d5db !important;
-}
-
-.api-label {
-    color: white;
-    font-weight: 600;
-    margin-right: 8px;
+/* Force ALL labels to be visible in dark mode */
+label {
+    color: white !important;
+    font-weight: 600 !important;
 }
 
 </style>
@@ -67,7 +52,7 @@ st.markdown("""
 
 
 # -----------------------------
-# TOP HEADER (API KEY RIGHT SIDE)
+# HEADER
 # -----------------------------
 col1, col2 = st.columns([8, 2])
 
@@ -75,8 +60,8 @@ with col1:
     st.title("🧠 AI Data Generator")
 
 with col2:
-    api_key = st.text_input("🔑 API Key", type="password")
-
+    st.markdown("### 🔑 API Key")
+    api_key = st.text_input("", type="password")
 
 client = OpenAI(api_key=api_key) if api_key else None
 
@@ -127,7 +112,7 @@ storage = Storage(DATA_FILE)
 
 
 # -----------------------------
-# SCHEMA
+# SCHEMA ENGINE
 # -----------------------------
 def smart_schema(prompt):
 
@@ -143,6 +128,13 @@ def smart_schema(prompt):
             {"name": "amount", "type": "amount"},
             {"name": "status", "type": "string"}
         ]
+    elif "medical" in text:
+        fields += [
+            {"name": "patient_name", "type": "string"},
+            {"name": "age", "type": "int"},
+            {"name": "email", "type": "email"},
+            {"name": "phone", "type": "phone"}
+        ]
     else:
         fields += [
             {"name": "name", "type": "string"},
@@ -155,7 +147,7 @@ def smart_schema(prompt):
 
 
 # -----------------------------
-# DATA ENGINE
+# VALUE ENGINE (VALID DATA)
 # -----------------------------
 def gen_value(field):
 
@@ -174,15 +166,21 @@ def gen_value(field):
     if "phone" in name:
         return "+91-" + str(random.randint(6000000000, 9999999999))
 
-    if "status" in name:
-        return random.choice(["ACTIVE", "INACTIVE", "PENDING", "SUCCESS"])
+    if "age" in name:
+        return random.randint(18, 80)
 
     if t == "amount":
         return round(random.uniform(100, 50000), 2)
 
+    if "status" in name:
+        return random.choice(["ACTIVE", "INACTIVE", "PENDING", "SUCCESS"])
+
     return "N/A"
 
 
+# -----------------------------
+# GENERATE
+# -----------------------------
 def generate(fields, rows):
 
     data = []
@@ -208,18 +206,21 @@ if "record" not in st.session_state:
 
 
 # -----------------------------
-# UI TABS
+# TABS
 # -----------------------------
 tab1, tab2 = st.tabs(["🚀 Generate", "📂 History"])
 
 
 # =============================
-# GENERATE
+# 🚀 GENERATE
 # =============================
 with tab1:
 
-    prompt = st.text_area("💬 Describe dataset")
-    rows = st.number_input("📊 Rows", min_value=1, value=10)
+    st.markdown("### 💬 Describe Dataset")
+    prompt = st.text_area("")
+
+    st.markdown("### 📊 Rows")
+    rows = st.number_input("", min_value=1, value=10)
 
     if st.button("Generate"):
 
@@ -252,7 +253,7 @@ with tab1:
 
 
 # =============================
-# HISTORY
+# 📂 HISTORY
 # =============================
 with tab2:
 
@@ -265,7 +266,11 @@ with tab2:
     for item in reversed(data):
 
         st.markdown(f"""
-        <div style="background:#111827;padding:12px;border-radius:10px;margin-bottom:10px;">
+        <div style="
+            background:#111827;
+            padding:12px;
+            border-radius:10px;
+            margin-bottom:10px;">
         📦 {item.get('name')}
         </div>
         """, unsafe_allow_html=True)
@@ -284,10 +289,18 @@ with tab2:
         col1, col2 = st.columns(2)
 
         with col1:
-            st.download_button("⬇ CSV", preview.to_csv(index=False), file_name=f"{item['id']}.csv")
+            st.download_button(
+                "⬇ CSV",
+                preview.to_csv(index=False),
+                file_name=f"{item['id']}.csv"
+            )
 
         with col2:
-            st.download_button("⬇ JSON", json.dumps(item, indent=2), file_name=f"{item['id']}.json")
+            st.download_button(
+                "⬇ JSON",
+                json.dumps(item, indent=2),
+                file_name=f"{item['id']}.json"
+            )
 
         if st.button("🗑 Delete", key=item["id"]):
             storage.delete(item["id"])
