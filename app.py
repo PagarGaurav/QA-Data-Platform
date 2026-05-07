@@ -4,6 +4,8 @@ import json
 import os
 import uuid
 import io
+import random
+import time
 from datetime import datetime
 from openai import OpenAI
 
@@ -93,7 +95,7 @@ class Storage:
 storage = Storage(DATA_FILE)
 
 # -----------------------------
-# SCHEMA EXTRACTION (LIGHT + FAST)
+# SCHEMA EXTRACTION
 # -----------------------------
 def extract_schema(prompt):
 
@@ -102,7 +104,6 @@ Return ONLY JSON array:
 [
   {"name": "column"}
 ]
-No explanation.
 """
 
     res = client.chat.completions.create(
@@ -122,64 +123,103 @@ No explanation.
     return json.loads(content[start:end])
 
 # -----------------------------
-# 🚀 FINAL DATA GENERATION ENGINE (FIXED)
+# 🚀 BULLETPROOF GENERATION ENGINE
 # -----------------------------
 def generate(fields, rows, prompt):
 
     system = """
-You are a strict enterprise synthetic data generator.
+You are a strict dataset generator.
 
-Return ONLY valid JSON array of objects.
+Return ONLY valid JSON:
+{
+  "data": [
+    { "col": "value" }
+  ]
+}
 
-RULES:
-- Generate exact number of rows
-- Follow column names exactly
-- Values must be realistic and logically consistent
-- NO fake sentences, NO nonsense text
-- Emails must match names when applicable
-- Phones must be valid format
-- No extra keys
+Rules:
+- exact row count
+- no extra keys
+- realistic values
 """
 
-    res = client.chat.completions.create(
-        model="gpt-4o-mini",
-        response_format={"type": "json_object"},
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": f"""
-Dataset request:
-{prompt}
+    last_error = None
+
+    # ---------------- RETRY LOOP ----------------
+    for attempt in range(3):
+
+        try:
+            res = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": f"""
+Prompt: {prompt}
 
 Columns:
 {json.dumps(fields)}
 
-Rows required:
-{rows}
+Rows: {rows}
 
-Return ONLY JSON array.
+Return JSON only.
 """}
-        ],
-        temperature=0.3
-    )
+                ],
+                temperature=0.3
+            )
 
-    content = res.choices[0].message.content
+            content = res.choices[0].message.content
+            data = json.loads(content)
 
-    try:
-        data = json.loads(content)
+            if isinstance(data, dict):
+                data = data.get("data", [])
 
-        # handle wrapped response
-        if isinstance(data, dict):
-            for v in data.values():
-                if isinstance(v, list):
-                    data = v
-                    break
+            if not isinstance(data, list):
+                raise ValueError("Invalid format")
 
-    except:
-        st.error("Invalid dataset generated")
-        st.code(content)
-        st.stop()
+            if len(data) == 0:
+                raise ValueError("Empty output")
 
-    df = pd.DataFrame(data)
+            if len(data) > rows:
+                data = data[:rows]
+
+            df = pd.DataFrame(data)
+            df.index = range(1, len(df) + 1)
+
+            return df
+
+        except Exception as e:
+            last_error = str(e)
+            time.sleep(0.5)
+
+    # ---------------- FALLBACK (ZERO FAILURE GUARANTEE) ----------------
+    st.warning("AI failed → using fallback generator")
+
+    fallback = []
+
+    for _ in range(rows):
+        row = {}
+
+        for f in fields:
+            name = f["name"].lower()
+
+            if "name" in name:
+                row[name] = "User_" + str(uuid.uuid4())[:4]
+
+            elif "email" in name:
+                row[name] = f"user{random.randint(100,999)}@mail.com"
+
+            elif "phone" in name:
+                row[name] = f"+91-{random.randint(70000,99999)}-{random.randint(10000,99999)}"
+
+            elif "id" in name:
+                row[name] = str(uuid.uuid4())[:10]
+
+            else:
+                row[name] = "sample"
+
+        fallback.append(row)
+
+    df = pd.DataFrame(fallback)
     df.index = range(1, len(df) + 1)
 
     return df
