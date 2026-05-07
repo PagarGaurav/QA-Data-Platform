@@ -1,12 +1,10 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-from faker import Faker
 import random
 import json
-import os
 import uuid
 from datetime import datetime
+from faker import Faker
 from openai import OpenAI
 
 fake = Faker()
@@ -16,10 +14,6 @@ fake = Faker()
 # -----------------------------
 st.set_page_config(page_title="AI Data Generator", layout="wide")
 
-
-# -----------------------------
-# UI STYLE
-# -----------------------------
 st.markdown("""
 <style>
 
@@ -34,159 +28,183 @@ st.markdown("""
     border-radius: 10px;
 }
 
-.stDownloadButton > button {
-    background-color: white !important;
-    color: black !important;
-    font-weight: 600;
-    border-radius: 8px;
-}
-
-/* Force ALL labels to be visible in dark mode */
 label {
     color: white !important;
-    font-weight: 600 !important;
+    font-weight: 600;
 }
 
 </style>
 """, unsafe_allow_html=True)
 
+st.title("🧠 AI Data Generator (Enterprise Safe GPT Mode)")
+
 
 # -----------------------------
-# HEADER
+# API KEY (MANDATORY FOR GPT)
 # -----------------------------
-col1, col2 = st.columns([8, 2])
-
-with col1:
-    st.title("🧠 AI Data Generator")
-
-with col2:
-    st.markdown("### 🔑 API Key")
-    api_key = st.text_input("", type="password")
+api_key = st.text_input("🔑 OpenAI API Key", type="password")
 
 client = OpenAI(api_key=api_key) if api_key else None
 
 
 # -----------------------------
-# STORAGE
+# STRICT TYPES
 # -----------------------------
-DATA_FILE = "storage.json"
-
-class Storage:
-
-    def __init__(self, file):
-        self.file = file
-        if not os.path.exists(file):
-            self._write([])
-
-    def _read(self):
-        try:
-            with open(self.file, "r") as f:
-                return json.load(f)
-        except:
-            return []
-
-    def _write(self, data):
-        tmp = self.file + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(data, f, indent=2)
-        os.replace(tmp, self.file)
-
-    def add(self, item):
-        data = self._read()
-        data.append(item)
-        self._write(data)
-
-    def delete(self, item_id):
-        data = self._read()
-        data = [x for x in data if x.get("id") != item_id]
-        self._write(data)
-
-    def clear_all(self):
-        self._write([])
-
-    def get_all(self):
-        return self._read()
-
-
-storage = Storage(DATA_FILE)
+ALLOWED_TYPES = {"string", "int", "email", "phone", "amount", "id"}
 
 
 # -----------------------------
-# SCHEMA ENGINE
+# GPT → SCHEMA ONLY
 # -----------------------------
-def smart_schema(prompt):
+def gpt_schema(prompt):
 
-    text = prompt.lower()
+    if not client:
+        return None
 
-    fields = [{"name": "id", "type": "id"}]
+    try:
+        res = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": """
+You ONLY generate JSON schema.
 
-    if "bank" in text:
-        fields += [
-            {"name": "name", "type": "string"},
-            {"name": "email", "type": "email"},
-            {"name": "phone", "type": "phone"},
-            {"name": "amount", "type": "amount"},
-            {"name": "status", "type": "string"}
-        ]
-    elif "medical" in text:
-        fields += [
-            {"name": "patient_name", "type": "string"},
-            {"name": "age", "type": "int"},
-            {"name": "email", "type": "email"},
-            {"name": "phone", "type": "phone"}
-        ]
-    else:
-        fields += [
-            {"name": "name", "type": "string"},
-            {"name": "email", "type": "email"},
-            {"name": "phone", "type": "phone"},
-            {"name": "status", "type": "string"}
-        ]
+Rules:
+- No extra text
+- No hallucinated fields
+- Only valid types: string, int, email, phone, amount, id
 
-    return fields
+Return format:
+{
+  "name": "Dataset",
+  "fields": [
+    {"name": "field", "type": "string"}
+  ]
+}
+"""
+                },
+                {"role": "user", "content": prompt}
+            ],
+            response_format={"type": "json_object"}
+        )
+
+        return json.loads(res.choices[0].message.content)
+
+    except:
+        return None
 
 
 # -----------------------------
-# VALUE ENGINE (VALID DATA)
+# VALIDATION ENGINE (CRITICAL)
 # -----------------------------
-def gen_value(field):
+def validate_schema(schema):
 
-    name = field["name"].lower()
-    t = field["type"]
+    if not schema or "fields" not in schema:
+        return None
 
-    if "id" in name:
+    clean = []
+    seen = set()
+
+    for f in schema["fields"]:
+
+        name = str(f.get("name", "")).strip().lower()
+        t = f.get("type")
+
+        if not name or t not in ALLOWED_TYPES:
+            continue
+
+        if name in seen:
+            continue
+
+        seen.add(name)
+
+        clean.append({"name": name, "type": t})
+
+    if not clean:
+        return None
+
+    return {"name": schema.get("name", "Dataset"), "fields": clean}
+
+
+# -----------------------------
+# DATA ENGINE (NO AI HERE)
+# -----------------------------
+def gen_value(f):
+
+    name = f["name"]
+    t = f["type"]
+
+    if t == "id":
         return str(uuid.uuid4())[:10]
 
-    if "name" in name:
-        return fake.name()
+    if t == "string":
+        if "name" in name:
+            return fake.name()
+        return fake.word().capitalize()
 
-    if "email" in name:
+    if t == "email":
         return fake.email()
 
-    if "phone" in name:
+    if t == "phone":
         return "+91-" + str(random.randint(6000000000, 9999999999))
 
-    if "age" in name:
-        return random.randint(18, 80)
-
     if t == "amount":
-        return round(random.uniform(100, 50000), 2)
+        return round(random.uniform(1000, 50000), 2)
 
-    if "status" in name:
-        return random.choice(["ACTIVE", "INACTIVE", "PENDING", "SUCCESS"])
+    if t == "int":
+        return random.randint(18, 90)
 
     return "N/A"
 
 
 # -----------------------------
-# GENERATE
+# FALLBACK SCHEMA (IF GPT FAILS)
 # -----------------------------
-def generate(fields, rows):
+def fallback(prompt):
+
+    text = prompt.lower()
+
+    if "login" in text:
+        return {
+            "name": "Login_Data",
+            "fields": [
+                {"name": "username", "type": "string"},
+                {"name": "password", "type": "string"},
+                {"name": "email", "type": "email"},
+                {"name": "device", "type": "string"}
+            ]
+        }
+
+    return {
+        "name": "Generic_Data",
+        "fields": [
+            {"name": "name", "type": "string"},
+            {"name": "email", "type": "email"},
+            {"name": "phone", "type": "phone"}
+        ]
+    }
+
+
+# -----------------------------
+# GENERATOR
+# -----------------------------
+def generate(schema, rows):
+
+    schema = validate_schema(schema)
+
+    if not schema:
+        raise ValueError("Invalid schema")
 
     data = []
 
     for _ in range(rows):
-        row = {f["name"]: gen_value(f) for f in fields}
+
+        row = {}
+
+        for f in schema["fields"]:
+            row[f["name"]] = gen_value(f)
+
         data.append(row)
 
     df = pd.DataFrame(data)
@@ -196,112 +214,30 @@ def generate(fields, rows):
 
 
 # -----------------------------
-# SESSION
+# UI INPUT
 # -----------------------------
-if "df" not in st.session_state:
-    st.session_state.df = None
-
-if "record" not in st.session_state:
-    st.session_state.record = None
+prompt = st.text_area("💬 Describe dataset")
+rows = st.number_input("📊 Rows", min_value=1, value=10)
 
 
 # -----------------------------
-# TABS
+# GENERATE BUTTON
 # -----------------------------
-tab1, tab2 = st.tabs(["🚀 Generate", "📂 History"])
+if st.button("Generate"):
 
+    schema = gpt_schema(prompt)
 
-# =============================
-# 🚀 GENERATE
-# =============================
-with tab1:
+    if not schema:
+        schema = fallback(prompt)
 
-    st.markdown("### 💬 Describe Dataset")
-    prompt = st.text_area("")
+    schema = validate_schema(schema)
 
-    st.markdown("### 📊 Rows")
-    rows = st.number_input("", min_value=1, value=10)
+    df = generate(schema, rows)
 
-    if st.button("Generate"):
+    st.success(f"Generated: {schema['name']}")
 
-        fields = smart_schema(prompt)
-        df = generate(fields, rows)
+    st.dataframe(df)
 
-        st.session_state.df = df
+    st.download_button("⬇ CSV", df.to_csv(index=False), "data.csv")
 
-        st.session_state.record = {
-            "id": str(uuid.uuid4())[:8],
-            "name": prompt[:40],
-            "fields": fields,
-            "created_at": str(datetime.now())
-        }
-
-        storage.add(st.session_state.record)
-
-        st.success("Dataset generated")
-
-    if st.session_state.df is not None:
-        st.dataframe(st.session_state.df)
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.download_button("⬇ CSV", st.session_state.df.to_csv(index=False), "data.csv")
-
-        with col2:
-            st.download_button("⬇ JSON", json.dumps(st.session_state.record, indent=2), "data.json")
-
-
-# =============================
-# 📂 HISTORY
-# =============================
-with tab2:
-
-    data = storage.get_all()
-
-    if not data:
-        st.info("No history found")
-        st.stop()
-
-    for item in reversed(data):
-
-        st.markdown(f"""
-        <div style="
-            background:#111827;
-            padding:12px;
-            border-radius:10px;
-            margin-bottom:10px;">
-        📦 {item.get('name')}
-        </div>
-        """, unsafe_allow_html=True)
-
-        fields = item.get("fields", [])
-
-        preview = pd.DataFrame([
-            {f["name"]: gen_value(f) for f in fields}
-            for _ in range(3)
-        ])
-
-        preview.index = range(1, len(preview) + 1)
-
-        st.dataframe(preview)
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.download_button(
-                "⬇ CSV",
-                preview.to_csv(index=False),
-                file_name=f"{item['id']}.csv"
-            )
-
-        with col2:
-            st.download_button(
-                "⬇ JSON",
-                json.dumps(item, indent=2),
-                file_name=f"{item['id']}.json"
-            )
-
-        if st.button("🗑 Delete", key=item["id"]):
-            storage.delete(item["id"])
-            st.rerun()
+    st.download_button("⬇ JSON", json.dumps(schema, indent=2), "schema.json")
