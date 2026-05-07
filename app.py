@@ -31,24 +31,20 @@ st.markdown("""
 
 .card {
     background: #111827;
-    padding: 15px;
+    padding: 12px;
     border-radius: 12px;
-    margin-bottom: 15px;
+    margin-bottom: 12px;
     border: 1px solid #1f2937;
 }
 
 .title {
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 600;
 }
 
 .meta {
-    font-size: 13px;
+    font-size: 12px;
     color: #9ca3af;
-}
-
-.white-text {
-    color: white;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -108,9 +104,13 @@ storage = Storage(DATA_FILE)
 
 
 # -----------------------------
-# AI SCHEMA
+# AI SCHEMA ENGINE
 # -----------------------------
 def ai_schema(prompt):
+
+    if not api_key:
+        st.error("Enter API key")
+        st.stop()
 
     res = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -118,12 +118,15 @@ def ai_schema(prompt):
             {
                 "role": "system",
                 "content": """
-Return JSON:
+Return ONLY JSON:
 {
-  "domain": "...",
   "name": "...",
-  "fields": [{"name":"...","type":"string|int|amount|email"}]
+  "domain": "...",
+  "fields": [
+    {"name":"...","type":"string|int|amount|email"}
+  ]
 }
+No explanation.
 """
             },
             {"role": "user", "content": prompt}
@@ -170,10 +173,9 @@ def create_record(prompt, schema, data_store):
     return {
         "id": str(uuid.uuid4())[:8],
         "name": schema.get("name", "Dataset"),
-        "prompt": prompt,
-        "domain": schema["domain"],
+        "domain": schema.get("domain", "unknown"),
         "version": get_version(data_store, schema.get("name", "Dataset")),
-        "fields": schema["fields"],
+        "fields": schema.get("fields", []),
         "created_at": str(datetime.now())
     }
 
@@ -183,6 +185,7 @@ def create_record(prompt, schema, data_store):
 # -----------------------------
 if "df" not in st.session_state:
     st.session_state.df = None
+
 if "record" not in st.session_state:
     st.session_state.record = None
 
@@ -199,29 +202,25 @@ tab1, tab2 = st.tabs(["🚀 Generate", "📂 History"])
 with tab1:
 
     prompt = st.text_area("💬 Describe dataset")
-
     rows = st.number_input("📊 Rows", min_value=1, value=10)
 
     if st.button("Generate"):
-
-        if not api_key:
-            st.error("Enter API key")
-            st.stop()
 
         schema = ai_schema(prompt)
 
         df = generate(schema["fields"], rows)
 
         st.session_state.df = df
-        st.session_state.record = create_record(
-            prompt, schema, storage.get_all()
-        )
+        st.session_state.record = create_record(prompt, schema, storage.get_all())
 
         storage.add(st.session_state.record)
 
         st.success(f"{schema['name']} generated")
 
 
+    # -----------------------------
+    # OUTPUT
+    # -----------------------------
     if st.session_state.df is not None:
 
         st.markdown("### 📊 Generated Dataset")
@@ -230,20 +229,26 @@ with tab1:
         col1, col2, col3 = st.columns(3)
 
         with col1:
-            st.json(st.session_state.record)
+            if st.button("👁 View Schema"):
+                st.json({
+                    "name": st.session_state.record["name"],
+                    "domain": st.session_state.record["domain"],
+                    "version": st.session_state.record["version"],
+                    "fields": st.session_state.record["fields"]
+                })
 
         with col2:
             st.download_button(
                 "⬇ CSV",
                 st.session_state.df.to_csv(index=False),
-                "data.csv"
+                "dataset.csv"
             )
 
         with col3:
             st.download_button(
                 "⬇ JSON",
                 json.dumps(st.session_state.record, indent=2),
-                "data.json"
+                "dataset.json"
             )
 
         if st.button("🗑 Delete Last"):
@@ -254,11 +259,11 @@ with tab1:
 
 
 # =============================
-# 📂 HISTORY (CARD UI)
+# 📂 HISTORY (CLEAN CARDS)
 # =============================
 with tab2:
 
-    st.subheader("📂 Generator History")
+    st.subheader("📂 Dataset History")
 
     data = storage.get_all()
 
@@ -268,17 +273,19 @@ with tab2:
 
     for item in reversed(data):
 
+        fields_preview = ", ".join(
+            [f["name"] for f in item.get("fields", [])]
+        )
+
         st.markdown(f"""
 <div class="card">
     <div class="title">📦 {item.get('name')} ({item.get('version')})</div>
     <div class="meta">Domain: {item.get('domain')} | ID: {item.get('id')}</div>
-
-    <p class="white-text">{item.get('prompt')}</p>
-
+    <div class="meta">Fields: {fields_preview}</div>
 </div>
 """, unsafe_allow_html=True)
 
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2)
 
         with col1:
             st.download_button(
@@ -294,7 +301,6 @@ with tab2:
                 file_name=f"{item['id']}.json"
             )
 
-        with col3:
-            if st.button("🗑 Delete", key=item["id"]):
-                storage.delete(item["id"])
-                st.rerun()
+        if st.button("🗑 Delete", key=item["id"]):
+            storage.delete(item["id"])
+            st.rerun()
