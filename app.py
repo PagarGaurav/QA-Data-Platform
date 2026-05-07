@@ -30,11 +30,11 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🧠 AI Data Generator (SaaS MVP)")
+st.title("🧠 AI Data Generator (SaaS Mode)")
 
 
 # -----------------------------
-# 🛡 STORAGE (SAFE)
+# 🛡 STORAGE
 # -----------------------------
 DATA_FILE = "storage.json"
 
@@ -80,34 +80,34 @@ storage = Storage(DATA_FILE)
 # 🧠 DOMAIN DETECTION
 # -----------------------------
 def detect_domain(prompt):
-    text = prompt.lower()
+    t = prompt.lower()
 
-    if any(x in text for x in ["sap", "purchase", "vendor", "material"]):
-        return "sap"
+    if any(x in t for x in ["sap", "vendor", "material"]):
+        return "SAP"
 
-    if any(x in text for x in ["ecommerce", "order", "product"]):
-        return "ecommerce"
+    if any(x in t for x in ["medical", "patient", "doctor"]):
+        return "MEDICAL"
 
-    if any(x in text for x in ["medical", "patient", "hospital"]):
-        return "medical"
+    if any(x in t for x in ["bank", "account"]):
+        return "BANKING"
 
-    if any(x in text for x in ["it", "ticket", "bug"]):
-        return "it"
+    if any(x in t for x in ["it", "ticket"]):
+        return "IT"
 
-    if any(x in text for x in ["login", "user"]):
-        return "login"
+    if any(x in t for x in ["login", "user"]):
+        return "LOGIN"
 
-    return "unknown"
+    return "UNKNOWN"
 
 
 # -----------------------------
-# 🧱 SCHEMAS
+# 🧱 SCHEMA MAP
 # -----------------------------
 def schema_map(domain):
 
-    if domain == "sap":
+    if domain == "SAP":
         return [
-            ("vendor", "name"),
+            ("vendor", "string"),
             ("material", "string"),
             ("quantity", "int"),
             ("price", "amount"),
@@ -115,30 +115,29 @@ def schema_map(domain):
             ("sold_to_party", "string")
         ]
 
-    if domain == "ecommerce":
+    if domain == "MEDICAL":
         return [
-            ("order_id", "int"),
-            ("customer", "name"),
-            ("product", "string"),
-            ("price", "amount")
-        ]
-
-    if domain == "medical":
-        return [
-            ("patient", "name"),
-            ("doctor", "name"),
+            ("patient", "string"),
+            ("doctor", "string"),
             ("diagnosis", "string"),
             ("hospital", "string")
         ]
 
-    if domain == "it":
+    if domain == "BANKING":
+        return [
+            ("account", "int"),
+            ("balance", "amount"),
+            ("transaction", "amount")
+        ]
+
+    if domain == "IT":
         return [
             ("ticket_id", "int"),
             ("issue", "string"),
             ("priority", "string")
         ]
 
-    if domain == "login":
+    if domain == "LOGIN":
         return [
             ("username", "string"),
             ("email", "email"),
@@ -157,9 +156,6 @@ def gen_value(t):
     if t == "int":
         return random.randint(1000, 99999)
 
-    if t == "name":
-        return fake.name()
-
     if t == "string":
         return fake.word()
 
@@ -172,48 +168,36 @@ def gen_value(t):
     return fake.word()
 
 
-def generate(rows, schema):
-    data = []
-
-    for i in range(rows):
-        row = {}
-
-        for col, typ in schema:
-
-            if col.endswith("id"):
-                row[col] = i + 1
-            else:
-                row[col] = gen_value(typ)
-
-        data.append(row)
-
-    return pd.DataFrame(data)
+def generate(schema):
+    return pd.DataFrame([
+        {c: gen_value(t) for c, t in schema}
+        for _ in range(10)
+    ])
 
 
 # -----------------------------
 # 🧾 RECORD
 # -----------------------------
-def create_record(prompt, rows, schema, domain):
-
+def create_record(prompt, schema, domain):
     return {
         "id": str(uuid.uuid4())[:8],
         "prompt": prompt,
-        "rows": rows,
         "domain": domain,
-        "cols": [c[0] for c in schema] if schema else [],
+        "rows": 10,
+        "cols": [c[0] for c in schema],
         "created_at": str(datetime.now())
     }
 
 
 # -----------------------------
-# TABS (KEEP ORIGINAL UI)
+# TABS
 # -----------------------------
 tab1, tab2 = st.tabs(["🚀 Generate", "📂 History"])
 
 
-# -----------------------------
-# 🚀 GENERATE
-# -----------------------------
+# =============================
+# 🚀 GENERATE TAB
+# =============================
 with tab1:
 
     prompt = st.text_area("💬 Describe dataset")
@@ -224,28 +208,28 @@ with tab1:
         schema = schema_map(domain)
 
         if not schema:
-
             st.error("⚠️ Cannot understand request safely")
             st.stop()
 
-        df = generate(10, schema)
+        df = generate(schema)
 
-        st.success(f"{domain.upper()} dataset generated")
+        st.success(f"{domain} dataset generated")
 
         st.dataframe(df)
 
+        # DOWNLOAD CSV
         st.download_button(
-            "Download CSV",
+            "⬇ Download CSV",
             df.to_csv(index=False),
-            "data.csv"
+            "dataset.csv"
         )
 
-        storage.add(create_record(prompt, 10, schema, domain))
+        storage.add(create_record(prompt, schema, domain))
 
 
-# -----------------------------
-# 📂 HISTORY (UPGRADED BUT SAME STYLE)
-# -----------------------------
+# =============================
+# 📂 HISTORY TAB (FULL FEATURES)
+# =============================
 with tab2:
 
     st.subheader("📂 History")
@@ -259,7 +243,7 @@ with tab2:
     search = st.text_input("🔎 Search")
     filter_domain = st.selectbox(
         "🎛️ Filter",
-        ["ALL", "SAP", "ECOMMERCE", "MEDICAL", "IT", "LOGIN", "UNKNOWN"]
+        ["ALL", "SAP", "MEDICAL", "BANKING", "IT", "LOGIN", "UNKNOWN"]
     )
 
     def match(x):
@@ -267,7 +251,7 @@ with tab2:
         if search and search.lower() not in x.get("prompt", "").lower():
             return False
 
-        if filter_domain != "ALL" and x.get("domain", "").upper() != filter_domain:
+        if filter_domain != "ALL" and x.get("domain") != filter_domain:
             return False
 
         return True
@@ -275,9 +259,11 @@ with tab2:
 
     filtered = [x for x in data if match(x)]
 
+    st.markdown(f"### 📊 Showing {len(filtered)} records")
+
     for item in reversed(filtered):
 
-        with st.expander(f"🧾 {item.get('id')} | {item.get('domain','unknown')}"):
+        with st.expander(f"🧾 {item.get('id')} | {item.get('domain')}"):
 
             st.write("Prompt:", item.get("prompt"))
             st.write("Domain:", item.get("domain"))
@@ -285,16 +271,33 @@ with tab2:
             st.write("Rows:", item.get("rows"))
             st.write("Time:", item.get("created_at"))
 
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
 
+            # 👁 PREVIEW
             with col1:
-                if st.button("🗑 Delete", key=item["id"]):
+                if st.button("👁 Preview", key="p"+item["id"]):
+                    st.write("📊 Schema Preview")
+                    st.json(item.get("cols"))
+
+            # ⬇ CSV DOWNLOAD
+            with col2:
+                st.download_button(
+                    "⬇ CSV",
+                    pd.DataFrame([item]).to_csv(index=False),
+                    file_name=f"{item['id']}.csv",
+                    key="csv"+item["id"]
+                )
+
+            # 🗑 DELETE
+            with col3:
+                if st.button("🗑 Delete", key="d"+item["id"]):
                     storage.delete(item["id"])
                     st.rerun()
 
-            with col2:
-                st.download_button(
-                    "⬇ Export",
-                    json.dumps(item, indent=2),
-                    file_name=f"{item['id']}.json"
-                )
+            # ⬇ JSON DOWNLOAD
+            st.download_button(
+                "⬇ JSON",
+                json.dumps(item, indent=2),
+                file_name=f"{item['id']}.json",
+                key="json"+item["id"]
+            )
