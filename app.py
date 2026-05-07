@@ -12,7 +12,7 @@ from openai import OpenAI
 fake = Faker()
 
 # -----------------------------
-# UI
+# UI (UNCHANGED)
 # -----------------------------
 st.set_page_config(page_title="AI Data Generator", layout="wide")
 
@@ -44,14 +44,11 @@ label {
 
 st.title("🧠 AI Data Generator")
 
-
 # -----------------------------
 # API KEY
 # -----------------------------
 api_key = st.sidebar.text_input("🔑 OpenAI API Key", type="password")
-
 client = OpenAI(api_key=api_key) if api_key else None
-
 
 # -----------------------------
 # STORAGE
@@ -59,7 +56,6 @@ client = OpenAI(api_key=api_key) if api_key else None
 DATA_FILE = "storage.json"
 
 class Storage:
-
     def __init__(self, file):
         self.file = file
         if not os.path.exists(file):
@@ -94,105 +90,77 @@ class Storage:
     def get_all(self):
         return self._read()
 
-
 storage = Storage(DATA_FILE)
 
-
 # -----------------------------
-# SCHEMA (SAFE FALLBACK)
+# LLM SCHEMA + DATA GENERATION
 # -----------------------------
-def smart_schema(prompt):
 
-    text = prompt.lower()
+def extract_schema(prompt):
+    """Step 1: Ask GPT to define strict schema"""
+    system = """
+You are a data schema designer.
+Return ONLY valid JSON.
 
-    fields = [{"name": "id", "type": "id"}]
+Rules:
+- output must be JSON array
+- each field must have:
+  name, type (string, int, float, email, phone, date, status, id)
+- no explanation
+"""
 
-    if any(k in text for k in ["bank", "customer"]):
-        fields += [
-            {"name": "name", "type": "string"},
-            {"name": "email", "type": "email"},
-            {"name": "phone", "type": "phone"},
-            {"name": "amount", "type": "amount"},
-            {"name": "status", "type": "string"}
+    res = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": f"Create dataset schema for: {prompt}"}
         ]
+    )
 
-    elif any(k in text for k in ["medical", "patient"]):
-        fields += [
-            {"name": "patient_name", "type": "string"},
-            {"name": "age", "type": "int"},
-            {"name": "email", "type": "email"},
-            {"name": "phone", "type": "phone"}
-        ]
-
-    elif any(k in text for k in ["sap", "vendor"]):
-        fields += [
-            {"name": "vendor_name", "type": "string"},
-            {"name": "material", "type": "id"},
-            {"name": "quantity", "type": "int"},
-            {"name": "amount", "type": "amount"}
-        ]
-
-    else:
-        fields += [
-            {"name": "name", "type": "string"},
-            {"name": "email", "type": "email"},
-            {"name": "phone", "type": "phone"},
-            {"name": "status", "type": "string"}
-        ]
-
-    return fields
+    return json.loads(res.choices[0].message.content)
 
 
-# -----------------------------
-# VALUE ENGINE (VALID DATA ONLY)
-# -----------------------------
-def gen_value(field):
+def generate_data(schema, rows, prompt):
+    """Step 2: Generate real valid structured data"""
 
-    name = field["name"].lower()
-    t = field["type"]
+    system = """
+You generate ONLY valid JSON array of objects.
+Rules:
+- Must follow schema exactly
+- No extra fields
+- No null unless required
+- All emails must be valid
+- All phones must be Indian format +91XXXXXXXXXX
+- IDs must be unique
+"""
 
-    if "id" in name:
-        return str(uuid.uuid4())[:10]
+    user_prompt = f"""
+Schema: {json.dumps(schema)}
+Rows: {rows}
+Context: {prompt}
 
-    if "name" in name:
-        return fake.name()
+Return JSON array only.
+"""
 
-    if "email" in name:
-        return fake.email()
+    for _ in range(3):  # retry safety
+        try:
+            res = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user_prompt}
+                ]
+            )
 
-    if "phone" in name:
-        return "+91-" + str(random.randint(6000000000, 9999999999))
+            data = json.loads(res.choices[0].message.content)
 
-    if "age" in name:
-        return random.randint(18, 80)
+            if isinstance(data, list):
+                return pd.DataFrame(data)
 
-    if t == "amount":
-        return round(random.uniform(100, 50000), 2)
+        except:
+            continue
 
-    if t == "int":
-        return random.randint(1, 9999)
-
-    if "status" in name:
-        return random.choice(["ACTIVE", "INACTIVE", "PENDING", "SUCCESS"])
-
-    return "N/A"
-
-
-# -----------------------------
-# GENERATOR
-# -----------------------------
-def generate(fields, rows):
-
-    data = []
-
-    for _ in range(rows):
-        row = {f["name"]: gen_value(f) for f in fields}
-        data.append(row)
-
-    df = pd.DataFrame(data)
-    df.index = range(1, len(df) + 1)  # START FROM 1
-
-    return df
+    raise Exception("Failed to generate valid dataset")
 
 
 # -----------------------------
@@ -204,15 +172,13 @@ if "df" not in st.session_state:
 if "record" not in st.session_state:
     st.session_state.record = None
 
-
 # -----------------------------
 # TABS
 # -----------------------------
 tab1, tab2 = st.tabs(["🚀 Generate", "📂 History"])
 
-
 # =============================
-# 🚀 GENERATE
+# GENERATE (UI SAME)
 # =============================
 with tab1:
 
@@ -221,22 +187,25 @@ with tab1:
 
     if st.button("Generate"):
 
-        fields = smart_schema(prompt)
-        df = generate(fields, rows)
+        if not client:
+            st.error("Please add OpenAI API key")
+            st.stop()
+
+        schema = extract_schema(prompt)
+        df = generate_data(schema, rows, prompt)
 
         st.session_state.df = df
 
         st.session_state.record = {
             "id": str(uuid.uuid4())[:8],
             "name": prompt[:40],
-            "fields": fields,
+            "schema": schema,
             "created_at": str(datetime.now())
         }
 
         storage.add(st.session_state.record)
 
         st.success("Dataset generated")
-
 
     if st.session_state.df is not None:
 
@@ -254,13 +223,12 @@ with tab1:
         with col2:
             st.download_button(
                 "⬇ JSON",
-                json.dumps(st.session_state.record, indent=2),
+                st.session_state.df.to_json(orient="records"),
                 "data.json"
             )
 
-
 # =============================
-# 📂 HISTORY (FIXED)
+# HISTORY (UNCHANGED UI)
 # =============================
 with tab2:
 
@@ -289,15 +257,12 @@ with tab2:
         </div>
         """, unsafe_allow_html=True)
 
-        # 🔥 REAL DATA PREVIEW (NO JSON / NO SCHEMA)
-        fields = item.get("fields", [])
+        schema = item.get("schema", [])
 
-        preview = pd.DataFrame([
-            {f["name"]: gen_value(f) for f in fields}
-            for _ in range(3)
-        ])
-
-        preview.index = range(1, len(preview) + 1)
+        try:
+            preview = generate_data(schema, 3, item["name"])
+        except:
+            preview = pd.DataFrame()
 
         st.dataframe(preview)
 
@@ -313,7 +278,7 @@ with tab2:
         with col2:
             st.download_button(
                 "⬇ JSON",
-                json.dumps(item, indent=2),
+                preview.to_json(orient="records"),
                 file_name=f"{item['id']}.json"
             )
 
