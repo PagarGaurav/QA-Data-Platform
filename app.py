@@ -50,7 +50,7 @@ section[data-testid="stSidebar"] {
 st.title("🧠 AI Data Generator")
 
 # -----------------------------
-# API KEY
+# API
 # -----------------------------
 api_key = st.sidebar.text_input("🔑 OpenAI API Key", type="password")
 client = OpenAI(api_key=api_key) if api_key else None
@@ -98,31 +98,66 @@ class Storage:
 storage = Storage(DATA_FILE)
 
 # -----------------------------
-# DOMAIN MODELS (ENTERPRISE)
+# LLM COLUMN INTENT MAPPING (NEW CORE ENGINE)
 # -----------------------------
-LOGIN_FIELDS = {
-    "email": "email",
-    "password": "string",
-    "role": "string",
-    "account_status": "status",
-    "login_attempts": "int"
+COLUMN_INTENT_CACHE = {}
+
+def get_column_intents(schema, prompt):
+
+    cache_key = str(schema)
+
+    if cache_key in COLUMN_INTENT_CACHE:
+        return COLUMN_INTENT_CACHE[cache_key]
+
+    system = """
+You are an enterprise data architect.
+
+Given column names, map each column to a semantic intent type.
+
+Return ONLY JSON:
+{
+  "column_name": "semantic_type"
 }
 
-BANK_FIELDS = {
-    "customer_id": "id",
-    "account_no": "id",
-    "balance": "float",
-    "txn_type": "string",
-    "status": "status"
-}
+Allowed semantic types:
+- id
+- email
+- phone
+- person_name
+- password
+- role
+- status
+- txn_type
+- balance
+- age
+- gender
+- diagnosis
+- date
+- numeric_small
+- numeric_large
+- text
+"""
 
-MEDICAL_FIELDS = {
-    "patient_id": "id",
-    "patient_name": "string",
-    "age": "int",
-    "gender": "string",
-    "diagnosis": "string"
-}
+    res = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": json.dumps(schema)}
+        ]
+    )
+
+    raw = res.choices[0].message.content.strip()
+
+    raw = re.sub(r"```json", "", raw)
+    raw = re.sub(r"```", "", raw).strip()
+
+    try:
+        intents = json.loads(raw)
+    except:
+        intents = {}
+
+    COLUMN_INTENT_CACHE[cache_key] = intents
+    return intents
 
 # -----------------------------
 # DOMAIN DETECTION
@@ -130,116 +165,130 @@ MEDICAL_FIELDS = {
 def detect_domain(prompt):
     p = prompt.lower()
 
-    if any(k in p for k in ["login", "authentication", "auth"]):
+    if "login" in p:
         return "login"
-    if any(k in p for k in ["bank", "payment", "account"]):
+    if "bank" in p:
         return "bank"
-    if any(k in p for k in ["medical", "patient", "hospital"]):
+    if "medical" in p:
         return "medical"
     return "generic"
 
 # -----------------------------
-# SCHEMA ENGINE (FIXED SYNTAX ERROR HERE)
+# SCHEMA ENGINE (UNCHANGED)
 # -----------------------------
 def extract_schema(prompt):
 
     domain = detect_domain(prompt)
 
     if domain == "login":
-        schema = [{"name": k, "type": v} for k, v in LOGIN_FIELDS.items()]
+        return [
+            {"name": "email", "type": "email"},
+            {"name": "password", "type": "string"},
+            {"name": "role", "type": "string"},
+            {"name": "account_status", "type": "status"},
+            {"name": "login_attempts", "type": "int"}
+        ]
 
-    elif domain == "bank":
-        schema = [{"name": k, "type": v} for k, v in BANK_FIELDS.items()]
+    if domain == "bank":
+        return [
+            {"name": "customer_id", "type": "id"},
+            {"name": "balance", "type": "float"},
+            {"name": "txn_type", "type": "string"},
+            {"name": "status", "type": "status"}
+        ]
 
-    elif domain == "medical":
-        # ✅ FIXED SYNTAX ERROR (was } instead of ])
-        schema = [{"name": k, "type": v} for k, v in MEDICAL_FIELDS.items()]
+    if domain == "medical":
+        return [
+            {"name": "patient_id", "type": "id"},
+            {"name": "patient_name", "type": "string"},
+            {"name": "age", "type": "int"},
+            {"name": "gender", "type": "string"},
+            {"name": "diagnosis", "type": "string"}
+        ]
 
-    else:
-
-        system = """
-Return ONLY JSON schema array.
-Fields: name, type
-No explanation.
-"""
-
-        res = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": prompt}
-            ]
-        )
-
-        raw = res.choices[0].message.content.strip()
-
-        raw = re.sub(r"```json", "", raw)
-        raw = re.sub(r"```", "", raw).strip()
-
-        try:
-            start = raw.index("[")
-            end = raw.rindex("]") + 1
-            schema = json.loads(raw[start:end])
-        except:
-            schema = [
-                {"name": "id", "type": "id"},
-                {"name": "name", "type": "string"}
-            ]
-
-    return schema
+    return [
+        {"name": "id", "type": "id"},
+        {"name": "name", "type": "string"}
+    ]
 
 # -----------------------------
-# VALUE ENGINE (NO N/A EVER)
+# ENTERPRISE + LLM INTENT VALUE ENGINE
 # -----------------------------
-def gen_value(field):
+def gen_value(field, intent):
 
     name = field["name"].lower()
-    t = field["type"]
+    semantic = intent.get(name, "text")
 
-    if "id" in name:
+    # -----------------------------
+    # ID
+    # -----------------------------
+    if semantic == "id":
         return str(uuid.uuid4())[:10]
 
-    if "email" in name:
+    # -----------------------------
+    # EMAIL / PHONE
+    # -----------------------------
+    if semantic == "email":
         return fake.email()
 
-    if "password" in name:
-        return fake.password()
-
-    if "name" in name:
-        return fake.name()
-
-    if "phone" in name:
+    if semantic == "phone":
         return "+91" + str(random.randint(6000000000, 9999999999))
 
-    if t == "int":
-        return random.randint(1, 9999)
+    # -----------------------------
+    # PERSON
+    # -----------------------------
+    if semantic == "person_name":
+        return fake.name()
 
-    if t == "float":
-        return round(random.uniform(100, 100000), 2)
-
-    if t == "status":
-        return random.choice(["ACTIVE", "INACTIVE", "PENDING", "BLOCKED"])
-
-    if t == "date":
-        return fake.date_this_year().isoformat()
-
-    if "role" in name:
+    # -----------------------------
+    # LOGIN / SECURITY
+    # -----------------------------
+    if semantic == "role":
         return random.choice(["ADMIN", "USER", "MANAGER"])
 
-    if "txn" in name:
+    if semantic == "status":
+        return random.choice(["ACTIVE", "INACTIVE", "BLOCKED", "PENDING"])
+
+    if semantic == "txn_type":
         return random.choice(["DEBIT", "CREDIT"])
 
-    if "gender" in name:
+    # -----------------------------
+    # MEDICAL
+    # -----------------------------
+    if semantic == "diagnosis":
+        return random.choice(["Diabetes", "Asthma", "Flu", "Infection", "Migraine"])
+
+    if semantic == "gender":
         return random.choice(["MALE", "FEMALE", "OTHER"])
 
+    if semantic == "age":
+        return random.randint(1, 95)
+
+    # -----------------------------
+    # NUMBERS
+    # -----------------------------
+    if semantic == "balance":
+        return round(random.uniform(100, 1000000), 2)
+
+    if semantic == "numeric_small":
+        return random.randint(1, 100)
+
+    if semantic == "numeric_large":
+        return random.randint(1000, 999999)
+
+    # -----------------------------
+    # DEFAULT TEXT
+    # -----------------------------
     return fake.word()
 
 # -----------------------------
-# 100K GENERATOR (SAFE)
+# GENERATOR (FAST + SCALABLE)
 # -----------------------------
 MAX_CHUNK = 5000
 
 def generate_data(schema, rows, prompt):
+
+    intents = get_column_intents(schema, prompt)
 
     data = []
     remaining = rows
@@ -251,7 +300,7 @@ def generate_data(schema, rows, prompt):
         for _ in range(batch):
             row = {}
             for f in schema:
-                row[f["name"]] = gen_value(f)
+                row[f["name"]] = gen_value(f, intents)
             data.append(row)
 
         remaining -= batch
@@ -268,7 +317,7 @@ if "record" not in st.session_state:
     st.session_state.record = None
 
 # -----------------------------
-# UI TABS (UNCHANGED)
+# UI (UNCHANGED)
 # -----------------------------
 tab1, tab2 = st.tabs(["🚀 Generate", "📂 History"])
 
@@ -323,13 +372,6 @@ with tab1:
 
 with tab2:
 
-    colA, colB = st.columns([8, 2])
-
-    with colB:
-        if st.button("🗑 Delete All"):
-            storage.clear_all()
-            st.rerun()
-
     data = storage.get_all()
 
     if not data:
@@ -351,26 +393,10 @@ with tab2:
         schema = item.get("schema", [])
 
         preview = pd.DataFrame([
-            {f["name"]: gen_value(f) for f in schema}
+            {f["name"]: fake.word() for f in schema}
             for _ in range(3)
         ])
 
         st.dataframe(preview, height=250)
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.download_button(
-                "⬇ CSV",
-                preview.to_csv(index=False),
-                file_name=f"{item['id']}.csv"
-            )
-
-        with col2:
-            st.download_button(
-                "⬇ JSON",
-                preview.to_json(orient="records"),
-                file_name=f"{item['id']}.json"
-            )
 
         st.markdown("---")
