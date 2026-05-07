@@ -8,7 +8,7 @@ from datetime import datetime
 from openai import OpenAI
 
 # -----------------------------
-# UI (NO CHANGE)
+# UI (UNCHANGED)
 # -----------------------------
 st.set_page_config(page_title="AI Data Generator", layout="wide")
 
@@ -79,22 +79,29 @@ class Storage:
         data.append(item)
         self._write(data)
 
+    def delete(self, item_id):
+        data = self._read()
+        data = [x for x in data if x["id"] != item_id]
+        self._write(data)
+
+    def clear_all(self):
+        self._write([])
+
     def get_all(self):
         return self._read()
 
 storage = Storage(DATA_FILE)
 
 # -----------------------------
-# SCHEMA EXTRACTION (UNCHANGED LOGIC)
+# CACHE (SPEED FIX)
 # -----------------------------
-def extract_schema(prompt):
-
+@st.cache_data
+def cached_schema(prompt):
     system = """
-Return ONLY JSON array:
+Return ONLY JSON:
 [
   {"name": "column", "type": "name|email|phone|id|address|number|date|text"}
 ]
-No explanation.
 """
 
     res = client.chat.completions.create(
@@ -107,87 +114,51 @@ No explanation.
     )
 
     content = res.choices[0].message.content
-
     start = content.find("[")
     end = content.rfind("]") + 1
-
     return json.loads(content[start:end])
 
 # -----------------------------
 # VALIDATION
 # -----------------------------
-def validate_schema(schema):
-
+def validate(schema):
     allowed = {"name","email","phone","id","address","number","date","text"}
-
-    clean = []
-    for f in schema:
-        clean.append({
-            "name": f["name"].strip().lower(),
-            "type": f["type"] if f["type"] in allowed else "text"
-        })
-
-    return clean
+    return [
+        {"name": f["name"].lower(), "type": f["type"] if f["type"] in allowed else "text"}
+        for f in schema
+    ]
 
 # -----------------------------
-# 🚀 FINAL PRODUCTION DATA ENGINE (IMPORTANT FIX)
-# ONE GPT CALL = FULL DATASET
+# DATA GENERATION (FAST - 1 CALL ONLY)
 # -----------------------------
 def generate(fields, rows, prompt):
 
-    if not client:
-        st.error("API key required")
-        st.stop()
-
-    schema = json.dumps(fields, indent=2)
-
     system = """
-You are a strict synthetic data generator.
-
-Return ONLY valid JSON array of objects.
-
-RULES:
-- Generate exact number of rows requested
-- Use ONLY given schema
-- No extra keys
-- No missing keys
-- All values must be realistic and consistent per row
-- No explanations, no markdown
-"""
-
-    user_prompt = f"""
-User requirement:
-{prompt}
-
-Schema:
-{schema}
-
-Rows: {rows}
+Generate dataset strictly as JSON array.
+No explanations. No markdown.
 """
 
     res = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": system},
-            {"role": "user", "content": user_prompt}
+            {"role": "user", "content": f"""
+Prompt: {prompt}
+Schema: {json.dumps(fields)}
+Rows: {rows}
+"""}
         ],
         temperature=0.4
     )
 
     content = res.choices[0].message.content
 
-    try:
-        start = content.find("[")
-        end = content.rfind("]") + 1
-        data = json.loads(content[start:end])
-    except:
-        st.error("Failed to generate valid dataset")
-        st.code(content)
-        st.stop()
+    start = content.find("[")
+    end = content.rfind("]") + 1
+    data = json.loads(content[start:end])
 
     df = pd.DataFrame(data)
-    df.index = range(1, len(df) + 1)
-
+    df.index = range(1, len(df)+1)
     return df
 
 # -----------------------------
@@ -197,7 +168,7 @@ if "df" not in st.session_state:
     st.session_state.df = None
 
 # -----------------------------
-# TABS (UNCHANGED UI)
+# TABS
 # -----------------------------
 tab1, tab2 = st.tabs(["🚀 Generate", "📂 History"])
 
@@ -211,26 +182,23 @@ with tab1:
 
     if st.button("Generate"):
 
-        st.session_state["last_prompt"] = prompt
-
-        schema = extract_schema(prompt)
-        schema = validate_schema(schema)
+        schema = cached_schema(prompt)
+        schema = validate(schema)
 
         df = generate(schema, rows, prompt)
-
         st.session_state.df = df
 
         storage.add({
             "id": str(uuid.uuid4())[:8],
             "name": prompt[:40],
             "fields": schema,
-            "created_at": str(datetime.now())
+            "created_at": str(datetime.now()),
+            "data": df.to_dict(orient="records")
         })
 
-        st.success("Dataset generated successfully")
+        st.success("Generated successfully")
 
     if st.session_state.df is not None:
-
         st.dataframe(st.session_state.df)
 
         col1, col2, col3 = st.columns(3)
@@ -248,11 +216,18 @@ with tab1:
             st.download_button("Excel", buffer, "data.xlsx")
 
 # =============================
-# HISTORY (UNCHANGED)
+# HISTORY (RESTORED FULL UI)
 # =============================
 with tab2:
 
     data = storage.get_all()
+
+    col1, col2 = st.columns([8,2])
+
+    with col2:
+        if st.button("🗑 Delete All"):
+            storage.clear_all()
+            st.rerun()
 
     if not data:
         st.info("No history found")
@@ -266,15 +241,27 @@ with tab2:
         </div>
         """, unsafe_allow_html=True)
 
-        fields = item.get("fields", [])
+        df = pd.DataFrame(item.get("data", []))
 
-        preview = pd.DataFrame([
-            {f["name"]: "sample" for f in fields}
-            for _ in range(3)
-        ])
+        st.dataframe(df)
 
-        preview.index = range(1, len(preview) + 1)
+        c1, c2, c3, c4 = st.columns(4)
 
-        st.dataframe(preview)
+        with c1:
+            st.download_button("CSV", df.to_csv(index=False), file_name=f"{item['id']}.csv")
+
+        with c2:
+            st.download_button("JSON", df.to_json(orient="records"), file_name=f"{item['id']}.json")
+
+        with c3:
+            buffer = io.BytesIO()
+            df.to_excel(buffer, index=False)
+            buffer.seek(0)
+            st.download_button("Excel", buffer, file_name=f"{item['id']}.xlsx")
+
+        with c4:
+            if st.button(f"🗑 Delete {item['id']}", key=item["id"]):
+                storage.delete(item["id"])
+                st.rerun()
 
         st.markdown("---")
