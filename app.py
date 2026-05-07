@@ -4,12 +4,8 @@ import json
 import os
 import uuid
 import io
-import random
 from datetime import datetime
-from faker import Faker
 from openai import OpenAI
-
-fake = Faker()
 
 # -----------------------------
 # UI (DO NOT CHANGE)
@@ -97,7 +93,7 @@ class Storage:
 storage = Storage(DATA_FILE)
 
 # -----------------------------
-# SCHEMA EXTRACTION (FAST)
+# SCHEMA EXTRACTION (LIGHT + FAST)
 # -----------------------------
 def extract_schema(prompt):
 
@@ -106,6 +102,7 @@ Return ONLY JSON array:
 [
   {"name": "column"}
 ]
+No explanation.
 """
 
     res = client.chat.completions.create(
@@ -125,103 +122,62 @@ Return ONLY JSON array:
     return json.loads(content[start:end])
 
 # -----------------------------
-# 🧠 SEMANTIC COLUMN MAPPER (CRITICAL FIX)
+# 🚀 FINAL DATA GENERATION ENGINE (FIXED)
 # -----------------------------
-def semantic_map_schema(schema, prompt):
+def generate(fields, rows, prompt):
 
     system = """
-You map dataset columns to correct semantic types.
+You are a strict enterprise synthetic data generator.
 
-Return ONLY JSON array:
-[
- {"name":"col","type":"name|email|phone|id|address|number|date|role|status|text"}
-]
+Return ONLY valid JSON array of objects.
 
-Rules:
-- Understand meaning (designation = role, residence = address, etc.)
-- No keyword matching only
-- Be logically correct
+RULES:
+- Generate exact number of rows
+- Follow column names exactly
+- Values must be realistic and logically consistent
+- NO fake sentences, NO nonsense text
+- Emails must match names when applicable
+- Phones must be valid format
+- No extra keys
 """
 
     res = client.chat.completions.create(
         model="gpt-4o-mini",
+        response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": system},
             {"role": "user", "content": f"""
-Prompt: {prompt}
-Columns: {json.dumps(schema)}
+Dataset request:
+{prompt}
+
+Columns:
+{json.dumps(fields)}
+
+Rows required:
+{rows}
+
+Return ONLY JSON array.
 """}
         ],
-        temperature=0
+        temperature=0.3
     )
 
     content = res.choices[0].message.content
 
-    start = content.find("[")
-    end = content.rfind("]") + 1
+    try:
+        data = json.loads(content)
 
-    return json.loads(content[start:end])
+        # handle wrapped response
+        if isinstance(data, dict):
+            for v in data.values():
+                if isinstance(v, list):
+                    data = v
+                    break
 
-# -----------------------------
-# 🚀 FAST DATA ENGINE (NO GPT ROWS)
-# -----------------------------
-def generate(fields, rows, prompt):
-
-    data = []
-
-    for _ in range(rows):
-
-        row = {}
-
-        person = fake.name()
-        first = person.split()[0].lower()
-        email = f"{first}{random.randint(10,999)}@gmail.com"
-        phone = f"+91-{random.randint(70000,99999)}-{random.randint(10000,99999)}"
-
-        for f in fields:
-
-            name = f["name"]
-            t = f["type"]
-
-            if t == "name":
-                row[name] = person
-
-            elif t == "email":
-                row[name] = email
-
-            elif t == "phone":
-                row[name] = phone
-
-            elif t == "address":
-                row[name] = f"{fake.city()}, {fake.country()}"
-
-            elif t == "id":
-                row[name] = str(uuid.uuid4())[:12]
-
-            elif t == "number":
-                row[name] = random.randint(1, 10000)
-
-            elif t == "date":
-                row[name] = fake.date_between("-3y", "today").isoformat()
-
-            elif t == "role":
-                row[name] = random.choice([
-                    "Software Engineer",
-                    "Data Analyst",
-                    "Product Manager",
-                    "Consultant",
-                    "HR Executive"
-                ])
-
-            elif t == "status":
-                row[name] = random.choice([
-                    "Active", "Inactive", "Pending", "Completed"
-                ])
-
-            else:
-                row[name] = fake.word()
-
-        data.append(row)
+    except:
+        st.error("Invalid dataset generated")
+        st.code(content)
+        st.stop()
 
     df = pd.DataFrame(data)
     df.index = range(1, len(df) + 1)
@@ -249,10 +205,11 @@ with tab1:
 
     if st.button("Generate"):
 
-        schema = extract_schema(prompt)
+        if not client:
+            st.error("API key required")
+            st.stop()
 
-        # 🔥 FIX APPLIED HERE (IMPORTANT)
-        schema = semantic_map_schema(schema, prompt)
+        schema = extract_schema(prompt)
 
         df = generate(schema, rows, prompt)
         st.session_state.df = df
