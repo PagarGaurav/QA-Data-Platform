@@ -52,6 +52,11 @@ api_key = st.sidebar.text_input("🔑 OpenAI API Key", type="password")
 client = OpenAI(api_key=api_key) if api_key else None
 
 # -----------------------------
+# CONFIG
+# -----------------------------
+MAX_CHUNK_SIZE = 2000  # safe batch size
+
+# -----------------------------
 # STORAGE
 # -----------------------------
 DATA_FILE = "storage.json"
@@ -94,76 +99,111 @@ class Storage:
 storage = Storage(DATA_FILE)
 
 # -----------------------------
-# SAFE SCHEMA EXTRACTION
+# VALUE ENGINE (FALLBACK)
+# -----------------------------
+def gen_value(field):
+
+    name = field["name"].lower()
+    t = field["type"]
+
+    if "id" in name:
+        return str(uuid.uuid4())[:10]
+
+    if "name" in name:
+        return fake.name()
+
+    if "email" in name:
+        return fake.email()
+
+    if "phone" in name:
+        return "+91-" + str(random.randint(6000000000, 9999999999))
+
+    if "age" in name:
+        return random.randint(18, 80)
+
+    if t == "int":
+        return random.randint(1, 9999)
+
+    if t == "float":
+        return round(random.uniform(10, 50000), 2)
+
+    if "status" in name:
+        return random.choice(["ACTIVE", "INACTIVE", "PENDING", "SUCCESS"])
+
+    return "N/A"
+
+# -----------------------------
+# SAFE SCHEMA GENERATION
 # -----------------------------
 def extract_schema(prompt):
 
     system = """
-You are a data schema generator.
+You are a STRICT dataset schema generator.
 
-RULES:
-- Return ONLY JSON array
-- No explanation
-- No markdown
-- Each field: name, type
-- Types: string, int, float, email, phone, date, status, id
+Return ONLY JSON array.
+
+Rules:
+- no explanation
+- no markdown
+- only fields: name, type
+- type: string, int, float, email, phone, date, status, id
 """
 
     res = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": system},
-            {"role": "user", "content": f"Create dataset schema for: {prompt}"}
+            {"role": "user", "content": prompt}
         ]
     )
 
     raw = res.choices[0].message.content.strip()
 
-    # -----------------------------
-    # CLEAN GPT OUTPUT
-    # -----------------------------
     raw = re.sub(r"```json", "", raw)
     raw = re.sub(r"```", "", raw).strip()
 
     try:
         start = raw.index("[")
         end = raw.rindex("]") + 1
-        clean = raw[start:end]
-        return json.loads(clean)
-
+        return json.loads(raw[start:end])
     except:
         return [
             {"name": "id", "type": "id"},
             {"name": "name", "type": "string"},
             {"name": "email", "type": "email"},
             {"name": "phone", "type": "phone"},
-            {"name": "status", "type": "string"}
+            {"name": "status", "type": "status"}
         ]
 
 # -----------------------------
-# DATA GENERATION (LLM POWERED)
+# 🚀 100K SAFE STREAM GENERATOR
 # -----------------------------
 def generate_data(schema, rows, prompt):
 
     system = """
 Generate ONLY valid JSON array of objects.
 
-RULES:
-- follow schema exactly
+Rules:
+- match schema exactly
 - no extra fields
 - valid emails
 - +91 phone format
-- unique ids
 """
 
-    user_prompt = f"""
+    all_data = []
+    remaining = rows
+
+    while remaining > 0:
+
+        batch_size = min(MAX_CHUNK_SIZE, remaining)
+
+        user_prompt = f"""
 Schema: {json.dumps(schema)}
-Rows: {rows}
+Rows: {batch_size}
 Context: {prompt}
-Return JSON only.
+Return ONLY JSON array.
 """
 
-    for _ in range(3):
         try:
             res = client.chat.completions.create(
                 model="gpt-4o-mini",
@@ -178,15 +218,22 @@ Return JSON only.
             raw = re.sub(r"```json", "", raw)
             raw = re.sub(r"```", "", raw).strip()
 
-            data = json.loads(raw)
+            start = raw.index("[")
+            end = raw.rindex("]") + 1
+            batch = json.loads(raw[start:end])
 
-            if isinstance(data, list):
-                return pd.DataFrame(data)
+            all_data.extend(batch)
 
         except:
-            continue
+            for _ in range(batch_size):
+                row = {}
+                for f in schema:
+                    row[f["name"]] = gen_value(f)
+                all_data.append(row)
 
-    return pd.DataFrame([])
+        remaining -= batch_size
+
+    return pd.DataFrame(all_data)
 
 # -----------------------------
 # SESSION
@@ -233,22 +280,27 @@ with tab1:
         st.success("Dataset generated")
 
     if st.session_state.df is not None:
-        st.dataframe(st.session_state.df)
+
+        df = st.session_state.df
+
+        # IMPORTANT: UI SAFE PREVIEW ONLY
+        st.dataframe(df.head(50))
+        st.info(f"Showing 50 of {len(df)} rows")
 
         col1, col2 = st.columns(2)
 
         with col1:
             st.download_button(
                 "⬇ CSV",
-                st.session_state.df.to_csv(index=False),
-                "data.csv"
+                df.to_csv(index=False),
+                file_name=f"data_{len(df)}_rows.csv"
             )
 
         with col2:
             st.download_button(
                 "⬇ JSON",
-                st.session_state.df.to_json(orient="records"),
-                "data.json"
+                df.to_json(orient="records"),
+                file_name="data.json"
             )
 
 # =============================
