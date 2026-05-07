@@ -1,5 +1,6 @@
 streamlit
 pandas
-faker
-numpy
+requests
+beautifulsoup4
 openpyxl
+lxml
