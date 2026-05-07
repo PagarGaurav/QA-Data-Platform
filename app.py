@@ -4,8 +4,12 @@ import json
 import os
 import uuid
 import io
+import random
 from datetime import datetime
+from faker import Faker
 from openai import OpenAI
+
+fake = Faker()
 
 # -----------------------------
 # UI (DO NOT CHANGE)
@@ -93,7 +97,7 @@ class Storage:
 storage = Storage(DATA_FILE)
 
 # -----------------------------
-# SCHEMA EXTRACTION (ONLY STRUCTURE)
+# SCHEMA EXTRACTION
 # -----------------------------
 def extract_schema(prompt):
 
@@ -121,64 +125,115 @@ Return ONLY JSON array:
     return json.loads(content[start:end])
 
 # -----------------------------
-# 🚀 FINAL BULLETPROOF GENERATOR
+# 🚀 LEVEL 2 REALISTIC ENGINE
 # -----------------------------
 def generate(fields, rows, prompt):
 
-    system = """
-You are a strict enterprise synthetic data generator.
+    prompt_lower = prompt.lower()
 
-OUTPUT RULES:
-- Return ONLY a JSON array (no wrapper object)
-- Each object must match given columns exactly
-- Must generate realistic, consistent data
-- No explanations, no markdown
-- No fake sentences or garbage text
-"""
+    # detect domain
+    domain = "generic"
+    if any(x in prompt_lower for x in ["employee", "hr", "salary", "designation"]):
+        domain = "hr"
+    elif any(x in prompt_lower for x in ["customer", "crm", "lead", "sales"]):
+        domain = "crm"
+    elif any(x in prompt_lower for x in ["bank", "account", "loan", "kyc"]):
+        domain = "bank"
 
-    res = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": f"""
-Prompt:
-{prompt}
+    hr_roles = ["Software Engineer", "Data Analyst", "Manager", "Consultant", "HR Executive"]
+    crm_status = ["New", "Contacted", "Qualified", "Lost", "Won"]
+    general_status = ["Active", "Inactive", "Pending", "Completed"]
 
-Columns:
-{json.dumps(fields)}
+    data = []
 
-Rows required:
-{rows}
+    for _ in range(rows):
 
-Return ONLY JSON array.
-"""}
-        ],
-        temperature=0.2
-    )
+        row = {}
 
-    content = res.choices[0].message.content
+        name = fake.name()
+        first = name.split()[0].lower()
 
-    try:
-        data = json.loads(content)
+        email = f"{first}{random.randint(10,999)}@gmail.com"
 
-        if not isinstance(data, list):
-            raise ValueError("Invalid format")
+        # VALID INDIAN MOBILE NUMBER
+        phone = "+91" + random.choice(["6","7","8","9"]) + "".join(
+            [str(random.randint(0,9)) for _ in range(9)]
+        )
 
-        if len(data) == 0:
-            raise ValueError("Empty output")
+        role = random.choice(hr_roles)
 
-        if len(data) > rows:
-            data = data[:rows]
+        for f in fields:
 
-        df = pd.DataFrame(data)
-        df.index = range(1, len(df) + 1)
+            col = f["name"].lower()
 
-        return df
+            # ---------------- IDENTITY ----------------
+            if "name" in col:
+                row[col] = name
 
-    except Exception:
-        st.error("Invalid response from model")
-        st.code(content)
-        st.stop()
+            elif "email" in col:
+                row[col] = email
+
+            elif "phone" in col or "mobile" in col:
+                row[col] = phone
+
+            # ---------------- LOCATION ----------------
+            elif "address" in col or "city" in col:
+                row[col] = f"{fake.city()}, {fake.country()}"
+
+            # ---------------- IDS ----------------
+            elif "id" in col:
+                row[col] = str(uuid.uuid4())[:10]
+
+            # ---------------- AGE ----------------
+            elif "age" in col:
+                row[col] = random.randint(22, 60)
+
+            # ---------------- SALARY (REALISTIC) ----------------
+            elif "salary" in col:
+
+                salary_map = {
+                    "Software Engineer": (60000, 180000),
+                    "Data Analyst": (50000, 120000),
+                    "Manager": (90000, 250000),
+                    "Consultant": (70000, 200000),
+                    "HR Executive": (40000, 90000),
+                }
+
+                row[col] = random.randint(*salary_map[role])
+
+            # ---------------- ROLE ----------------
+            elif "role" in col or "designation" in col:
+                row[col] = role
+
+            # ---------------- STATUS ----------------
+            elif "status" in col:
+                if domain == "crm":
+                    row[col] = random.choice(crm_status)
+                else:
+                    row[col] = random.choice(general_status)
+
+            # ---------------- BANK ----------------
+            elif "balance" in col or "amount" in col:
+
+                if domain == "bank":
+                    row[col] = random.randint(1000, 1000000)
+                else:
+                    row[col] = random.randint(1000, 500000)
+
+            # ---------------- DATE ----------------
+            elif "date" in col:
+                row[col] = fake.date_between("-3y", "today").isoformat()
+
+            # ---------------- DEFAULT ----------------
+            else:
+                row[col] = fake.word()
+
+        data.append(row)
+
+    df = pd.DataFrame(data)
+    df.index = range(1, len(df) + 1)
+
+    return df
 
 # -----------------------------
 # SESSION
