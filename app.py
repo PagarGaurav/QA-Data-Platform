@@ -97,7 +97,7 @@ def extract_price(price):
 
 
 # =========================================================
-# FETCH PRODUCTS FROM SERPAPI
+# FETCH PRODUCTS
 # =========================================================
 def fetch_products(search_query):
 
@@ -105,14 +105,9 @@ def fetch_products(search_query):
         "engine": "google_shopping",
         "q": search_query,
         "api_key": api_key,
-        "num": max_products
+        "gl": "in" if country == "India" else "us",
+        "hl": "en"
     }
-
-    if country == "India":
-        params["gl"] = "in"
-
-    if country == "US":
-        params["gl"] = "us"
 
     response = requests.get(
         "https://serpapi.com/search",
@@ -124,6 +119,11 @@ def fetch_products(search_query):
 
     shopping_results = data.get("shopping_results", [])
 
+    # =====================================================
+    # APPLY MAX PRODUCT LIMIT MANUALLY
+    # =====================================================
+    shopping_results = shopping_results[:max_products]
+
     products = []
 
     for item in shopping_results:
@@ -133,12 +133,20 @@ def fetch_products(search_query):
         source = item.get("source", "")
 
         # =================================================
-        # REAL PRODUCT URL
+        # BEST URL SELECTION
         # =================================================
-        link = item.get("product_link", "")
+        link = (
+            item.get("offers_link")
+            or item.get("product_link")
+            or item.get("link")
+            or ""
+        )
 
-        if not link:
-            link = item.get("link", "")
+        # =================================================
+        # SKIP BAD GOOGLE LINKS
+        # =================================================
+        if "google.com" in link:
+            continue
 
         thumbnail = item.get("thumbnail", "")
         rating = item.get("rating", "")
@@ -171,9 +179,9 @@ if st.button("Compare Prices"):
         st.stop()
 
     # =====================================================
-    # FETCH
+    # FETCH PRODUCTS
     # =====================================================
-    with st.spinner("Fetching real products from Google Shopping..."):
+    with st.spinner("Fetching real products..."):
 
         try:
             products = fetch_products(query)
@@ -186,7 +194,7 @@ if st.button("Compare Prices"):
     # NO PRODUCTS
     # =====================================================
     if not products:
-        st.error("No products found")
+        st.error("No valid products found")
         st.stop()
 
     # =====================================================
@@ -195,12 +203,12 @@ if st.button("Compare Prices"):
     df = pd.DataFrame(products)
 
     # =====================================================
-    # CLEAN PRICES
+    # CLEAN PRICE
     # =====================================================
     df["price_num"] = df["Price"].apply(extract_price)
 
     # =====================================================
-    # SORT BY CHEAPEST
+    # SORT
     # =====================================================
     df = df.sort_values("price_num")
 
@@ -231,83 +239,85 @@ if st.button("Compare Prices"):
 
     for _, row in df.iterrows():
 
-        with st.container():
+        st.markdown("""
+        <div class="card">
+        """, unsafe_allow_html=True)
 
-            st.markdown("""
-            <div class="card">
-            """, unsafe_allow_html=True)
+        col1, col2 = st.columns([1, 3])
 
-            col1, col2 = st.columns([1, 3])
+        # =================================================
+        # IMAGE
+        # =================================================
+        with col1:
+
+            if row["Image"]:
+                st.image(
+                    row["Image"],
+                    width=180
+                )
+
+        # =================================================
+        # DETAILS
+        # =================================================
+        with col2:
+
+            # CLICKABLE TITLE
+            st.markdown(
+                f"""
+                <a href="{row['Link']}"
+                   target="_blank"
+                   style="text-decoration:none;color:white;">
+                    <h3>{row['Product']}</h3>
+                </a>
+                """,
+                unsafe_allow_html=True
+            )
+
+            st.write(f"🏬 Platform: {row['Platform']}")
+
+            st.write(f"💰 Price: {row['Price']}")
+
+            if row["Rating"]:
+                st.write(f"⭐ Rating: {row['Rating']}")
+
+            if row["Reviews"]:
+                st.write(f"📝 Reviews: {row['Reviews']}")
 
             # =================================================
-            # IMAGE
+            # CHEAPEST BADGE
             # =================================================
-            with col1:
-
-                if row["Image"]:
-                    st.image(
-                        row["Image"],
-                        width=180
-                    )
+            if row["price_num"] == min_price:
+                st.success("🏆 Cheapest Deal")
 
             # =================================================
-            # DETAILS
+            # BUY BUTTON
             # =================================================
-            with col2:
+            if row["Link"]:
 
-                # CLICKABLE PRODUCT TITLE
                 st.markdown(
                     f"""
-                    <a href="{row['Link']}" target="_blank"
-                       rel="noopener noreferrer"
-                       style="text-decoration:none;color:white;">
-                       <h3>{row['Product']}</h3>
+                    <a href="{row['Link']}"
+                       target="_blank"
+                       rel="noopener noreferrer">
+
+                        <button style="
+                            background: linear-gradient(90deg,#6366f1,#3b82f6);
+                            color:white;
+                            border:none;
+                            padding:10px 18px;
+                            border-radius:10px;
+                            cursor:pointer;
+                            font-weight:600;
+                        ">
+                            🛒 Buy Now
+                        </button>
+
                     </a>
                     """,
                     unsafe_allow_html=True
                 )
 
-                st.write(f"🏬 Platform: {row['Platform']}")
-
-                st.write(f"💰 Price: {row['Price']}")
-
-                if row["Rating"]:
-                    st.write(f"⭐ Rating: {row['Rating']}")
-
-                if row["Reviews"]:
-                    st.write(f"📝 Reviews: {row['Reviews']}")
-
-                # CHEAPEST BADGE
-                if row["price_num"] == min_price:
-                    st.success("🏆 Cheapest Deal")
-
-                # =================================================
-                # BUY BUTTON
-                # =================================================
-                if row["Link"]:
-
-                    st.markdown(
-                        f"""
-                        <a href="{row['Link']}"
-                           target="_blank"
-                           rel="noopener noreferrer">
-                            <button style="
-                                background: linear-gradient(90deg,#6366f1,#3b82f6);
-                                color:white;
-                                border:none;
-                                padding:10px 18px;
-                                border-radius:10px;
-                                cursor:pointer;
-                                font-weight:600;
-                            ">
-                                🛒 Buy Now
-                            </button>
-                        </a>
-                        """,
-                        unsafe_allow_html=True
-                    )
-
-            st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
     # =====================================================
     # TABLE VIEW
@@ -336,21 +346,27 @@ if st.button("Compare Prices"):
 
     d1, d2, d3 = st.columns(3)
 
+    # CSV
     with d1:
+
         st.download_button(
             "CSV",
             df.to_csv(index=False),
             "products.csv"
         )
 
+    # JSON
     with d2:
+
         st.download_button(
             "JSON",
             df.to_json(orient="records"),
             "products.json"
         )
 
+    # EXCEL
     with d3:
+
         buffer = io.BytesIO()
 
         df.to_excel(
