@@ -11,7 +11,7 @@ from datetime import datetime
 fake = Faker()
 
 # -----------------------------
-# 🎨 UI (MODERN DARK SAAS)
+# 🎨 UI
 # -----------------------------
 st.set_page_config(page_title="AI Data Generator", layout="wide")
 
@@ -26,35 +26,22 @@ st.markdown("""
     background: linear-gradient(90deg, #6366f1, #3b82f6);
     color: white;
     border-radius: 10px;
-    border: none;
-    padding: 0.5rem 1rem;
 }
-
-[data-testid="stMetric"] {
-    background-color: #111827;
-    padding: 10px;
-    border-radius: 10px;
-}
-
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🎬 AI Data Generator (Enterprise Safe)")
+st.title("🧠 AI Data Generator (NO-GUESS SAFE MODE)")
 
 
 # -----------------------------
-# 🛡 SAFE STORAGE
+# 🛡 STORAGE
 # -----------------------------
 DATA_FILE = "storage.json"
 
-
-class SafeStorage:
+class Storage:
     def __init__(self, file):
         self.file = file
-        self.ensure()
-
-    def ensure(self):
-        if not os.path.exists(self.file):
+        if not os.path.exists(file):
             self._write([])
 
     def _read(self):
@@ -67,42 +54,46 @@ class SafeStorage:
     def _write(self, data):
         tmp = self.file + ".tmp"
         with open(tmp, "w") as f:
-            json.dump(data, f, indent=2, default=str)
+            json.dump(data, f, indent=2)
         os.replace(tmp, self.file)
-
-    def get_all(self):
-        return self._read()
 
     def add(self, item):
         data = self._read()
         data.append(item)
         self._write(data)
 
-    def delete(self, item_id):
-        data = self._read()
-        data = [x for x in data if x.get("id") != item_id]
-        self._write(data)
+    def get(self):
+        return self._read()
 
 
-storage = SafeStorage(DATA_FILE)
+storage = Storage(DATA_FILE)
 
 
 # -----------------------------
-# 🧠 DOMAIN DETECTION
+# 🧠 INTENT DETECTION
 # -----------------------------
+def detect_intent(prompt):
+    text = prompt.lower()
+
+    if any(x in text for x in ["login", "signup", "authentication"]):
+        return "functional"
+
+    return "domain"
+
+
 def detect_domain(prompt):
     text = prompt.lower()
 
-    if any(x in text for x in ["sap", "purchase order", "po", "vendor", "plant"]):
+    if any(x in text for x in ["sap", "purchase order", "vendor", "plant"]):
         return "sap"
 
-    if any(x in text for x in ["ecommerce", "order", "product", "cart", "payment"]):
+    if any(x in text for x in ["ecommerce", "order", "product", "cart"]):
         return "ecommerce"
 
-    if any(x in text for x in ["medical", "patient", "hospital", "doctor"]):
+    if any(x in text for x in ["medical", "patient", "hospital"]):
         return "medical"
 
-    if any(x in text for x in ["it", "ticket", "incident", "bug", "issue"]):
+    if any(x in text for x in ["it", "ticket", "bug", "issue"]):
         return "it"
 
     return "unknown"
@@ -120,7 +111,6 @@ def sap_schema():
         ("plant", "string"),
         ("quantity", "int"),
         ("unit_price", "amount"),
-        ("currency", "currency"),
         ("status", "string"),
         ("po_date", "datetime")
     ]
@@ -130,14 +120,10 @@ def ecommerce_schema():
     return [
         ("order_id", "int"),
         ("customer_name", "name"),
-        ("customer_email", "email"),
+        ("email", "email"),
         ("product", "string"),
-        ("category", "string"),
-        ("quantity", "int"),
         ("price", "amount"),
-        ("payment_method", "string"),
-        ("status", "string"),
-        ("order_date", "datetime")
+        ("status", "string")
     ]
 
 
@@ -145,13 +131,10 @@ def medical_schema():
     return [
         ("patient_id", "int"),
         ("patient_name", "name"),
-        ("age", "age"),
-        ("gender", "string"),
+        ("age", "int"),
         ("doctor", "name"),
         ("diagnosis", "string"),
-        ("medicine", "string"),
-        ("hospital", "string"),
-        ("visit_date", "datetime")
+        ("hospital", "string")
     ]
 
 
@@ -159,65 +142,79 @@ def it_schema():
     return [
         ("ticket_id", "int"),
         ("user_name", "name"),
-        ("email", "email"),
-        ("issue_type", "string"),
+        ("issue", "string"),
         ("priority", "string"),
-        ("status", "string"),
-        ("assigned_to", "name"),
-        ("created_date", "datetime")
+        ("status", "string")
     ]
 
 
-def get_schema(domain):
+def login_schema():
+    return [
+        ("user_id", "int"),
+        ("username", "string"),
+        ("email", "email"),
+        ("password", "string"),
+        ("login_status", "string"),
+        ("device", "string")
+    ]
+
+
+def get_schema(domain, intent):
+    if intent == "functional":
+        return login_schema()
+
     if domain == "sap":
         return sap_schema()
+
     if domain == "ecommerce":
         return ecommerce_schema()
+
     if domain == "medical":
         return medical_schema()
+
     if domain == "it":
         return it_schema()
-    return []
+
+    return None
 
 
 # -----------------------------
 # 🧠 VALUE ENGINE
 # -----------------------------
-def generate_email():
-    return fake.user_name() + "@" + random.choice(["gmail.com", "yahoo.com", "outlook.com"])
-
-
 def gen_value(t):
+
     if t == "int":
-        return random.randint(1000, 999999)
+        return random.randint(1000, 99999)
+
     if t == "name":
         return fake.name()
+
     if t == "email":
-        return generate_email()
+        return fake.user_name() + "@gmail.com"
+
     if t == "string":
         return fake.word()
+
     if t == "amount":
-        return round(np.random.uniform(50, 5000), 2)
+        return round(np.random.uniform(10, 5000), 2)
+
     if t == "datetime":
-        return fake.date_between(start_date="-3y", end_date="today")
-    if t == "age":
-        return random.randint(18, 80)
-    if t == "currency":
-        return random.choice(["INR", "USD", "EUR"])
+        return fake.date_between(start_date="-2y", end_date="today")
+
     return fake.word()
 
 
-def generate_table(rows, cols):
+def generate(rows, schema):
     data = []
 
     for i in range(rows):
         row = {}
 
-        for name, t in cols:
-            if name.endswith("id") or name == "po_number" or name == "order_id" or name == "ticket_id":
-                row[name] = i + 1
+        for col, typ in schema:
+            if col.endswith("id"):
+                row[col] = i + 1
             else:
-                row[name] = gen_value(t)
+                row[col] = gen_value(typ)
 
         data.append(row)
 
@@ -225,45 +222,22 @@ def generate_table(rows, cols):
 
 
 # -----------------------------
-# 🧾 RECORD
+# 🚀 PARSE + NO-GUESS RULE
 # -----------------------------
-def create_record(prompt, rows, cols, domain):
-    return {
-        "id": str(uuid.uuid4())[:8],
-        "prompt": prompt,
-        "rows": rows,
-        "cols": [c[0] for c in cols],
-        "domain": domain,
-        "created_at": str(datetime.now())
-    }
+def parse(prompt):
 
-
-# -----------------------------
-# 🎯 PARSE + INTELLIGENCE
-# -----------------------------
-def parse_request(prompt):
-
+    intent = detect_intent(prompt)
     domain = detect_domain(prompt)
 
-    # ❌ UNKNOWN DOMAIN HANDLING
-    if domain == "unknown":
-        return None, None, None
+    schema = get_schema(domain, intent)
 
-    rows = 10
-    text = prompt.lower()
-
-    if "10k" in text:
-        rows = 10000
-
-    cols = get_schema(domain)
-
-    return rows, cols, domain
+    return intent, domain, schema
 
 
 # -----------------------------
-# TABS
+# UI
 # -----------------------------
-tab1, tab2 = st.tabs(["🚀 Generate", "🎬 Gallery"])
+tab1, tab2 = st.tabs(["🚀 Generate", "📂 History"])
 
 
 # -----------------------------
@@ -275,71 +249,61 @@ with tab1:
 
     if st.button("Generate"):
 
-        rows, cols, domain = parse_request(prompt)
+        intent, domain, schema = parse(prompt)
 
-        # ❌ UNKNOWN HANDLING (IMPORTANT)
-        if domain is None:
-            st.error("⚠️ I could not understand your request clearly.")
+        # ❌ SAFE MODE: ASK QUESTIONS
+        if schema is None or domain == "unknown":
 
-            st.markdown("### ❓ Please specify one of these:")
+            st.error("⚠️ I cannot generate this safely without clarity.")
+
+            st.markdown("### ❓ Please specify:")
+
             st.write("""
-- SAP Purchase Order dataset  
-- Ecommerce order dataset  
-- Medical patient dataset  
-- IT ticket dataset  
+- System type: SAP / Ecommerce / Medical / IT / Login test  
+- Entity: users / orders / patients / tickets  
+- Fields needed (if custom)
+- Purpose (testing / performance / validation)
 """)
+
             st.stop()
 
-        df = generate_table(rows, cols)
+        rows = 10
+        if "10k" in prompt.lower():
+            rows = 10000
 
-        st.success(f"Generated {domain.upper()} dataset")
+        df = generate(rows, schema)
 
-        st.session_state["last_df"] = df
+        st.success(f"Generated {domain.upper()} / {intent.upper()} dataset")
 
-        record = create_record(prompt, rows, cols, domain)
-        storage.add(record)
+        st.dataframe(df.head(20))
 
-        # PREVIEW
-        st.subheader("📊 Preview")
-        st.dataframe(df.head(15))
+        st.metric("Rows", len(df))
+        st.metric("Columns", len(df.columns))
 
-        # METRICS
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Rows", len(df))
-        c2.metric("Columns", len(df.columns))
-        c3.metric("Nulls", int(df.isnull().sum().sum()))
+        st.download_button("Download CSV", df.to_csv(index=False), "data.csv")
 
-        # DOWNLOAD
-        st.download_button(
-            "Download CSV",
-            df.to_csv(index=False),
-            "dataset.csv"
-        )
+        storage.add({
+            "id": str(uuid.uuid4())[:8],
+            "prompt": prompt,
+            "domain": domain,
+            "intent": intent,
+            "rows": rows
+        })
 
 
 # -----------------------------
-# 🎬 GALLERY (NETFLIX STYLE)
+# 📂 HISTORY
 # -----------------------------
 with tab2:
 
-    st.subheader("🎬 Dataset Gallery")
+    st.subheader("📂 Generated History")
 
-    history = storage.get_all()
+    for item in reversed(storage.get()):
 
-    if not history:
-        st.info("No datasets yet")
-    else:
-
-        for item in reversed(history):
-
-            st.markdown(f"""
-### 📦 {item.get('domain','UNKNOWN').upper()}
-- Prompt: {item.get('prompt')}
-- Rows: {item.get('rows')}
-- Columns: {item.get('cols')}
-- Time: {item.get('created_at')}
+        st.markdown(f"""
+### 🧾 {item['id']}
+- Prompt: {item['prompt']}
+- Domain: {item['domain']}
+- Intent: {item['intent']}
+- Rows: {item['rows']}
 """)
-
-            if st.button(f"🗑 Delete {item['id']}", key=item["id"]):
-                storage.delete(item["id"])
-                st.rerun()
