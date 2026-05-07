@@ -30,15 +30,17 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🧠 AI Data Generator (NO-GUESS SAFE MODE)")
+st.title("🧠 AI Data Generator (Safe Production Mode)")
 
 
 # -----------------------------
-# 🛡 STORAGE
+# 🛡 STORAGE (SAFE + BACKWARD COMPATIBLE)
 # -----------------------------
 DATA_FILE = "storage.json"
 
+
 class Storage:
+
     def __init__(self, file):
         self.file = file
         if not os.path.exists(file):
@@ -47,7 +49,8 @@ class Storage:
     def _read(self):
         try:
             with open(self.file, "r") as f:
-                return json.load(f)
+                data = json.load(f)
+                return data if isinstance(data, list) else []
         except:
             return []
 
@@ -62,7 +65,7 @@ class Storage:
         data.append(item)
         self._write(data)
 
-    def get(self):
+    def get_all(self):
         return self._read()
 
 
@@ -70,7 +73,7 @@ storage = Storage(DATA_FILE)
 
 
 # -----------------------------
-# 🧠 INTENT DETECTION
+# 🧠 DOMAIN + INTENT
 # -----------------------------
 def detect_intent(prompt):
     text = prompt.lower()
@@ -211,7 +214,7 @@ def generate(rows, schema):
         row = {}
 
         for col, typ in schema:
-            if col.endswith("id"):
+            if col.endswith("id") or col in ["po_number", "order_id", "ticket_id"]:
                 row[col] = i + 1
             else:
                 row[col] = gen_value(typ)
@@ -222,20 +225,23 @@ def generate(rows, schema):
 
 
 # -----------------------------
-# 🚀 PARSE + NO-GUESS RULE
+# 🧾 SAFE RECORD (NORMALIZED)
 # -----------------------------
-def parse(prompt):
+def create_record(prompt, rows, schema, domain, intent):
 
-    intent = detect_intent(prompt)
-    domain = detect_domain(prompt)
-
-    schema = get_schema(domain, intent)
-
-    return intent, domain, schema
+    return {
+        "id": str(uuid.uuid4())[:8],
+        "prompt": prompt,
+        "rows": rows,
+        "domain": domain,
+        "intent": intent,
+        "cols": [c[0] for c in schema] if schema else [],
+        "created_at": str(datetime.now())
+    }
 
 
 # -----------------------------
-# UI
+# TABS
 # -----------------------------
 tab1, tab2 = st.tabs(["🚀 Generate", "📂 History"])
 
@@ -249,19 +255,21 @@ with tab1:
 
     if st.button("Generate"):
 
-        intent, domain, schema = parse(prompt)
+        intent = detect_intent(prompt)
+        domain = detect_domain(prompt)
 
-        # ❌ SAFE MODE: ASK QUESTIONS
-        if schema is None or domain == "unknown":
+        schema = get_schema(domain, intent)
 
-            st.error("⚠️ I cannot generate this safely without clarity.")
+        # ❌ SAFE MODE: NO GUESSING
+        if schema is None:
+
+            st.error("⚠️ I cannot safely generate this dataset without clarity.")
 
             st.markdown("### ❓ Please specify:")
-
             st.write("""
-- System type: SAP / Ecommerce / Medical / IT / Login test  
-- Entity: users / orders / patients / tickets  
-- Fields needed (if custom)
+- SAP / Ecommerce / Medical / IT / Login test  
+- Entity type (users, orders, patients, tickets)  
+- Required fields  
 - Purpose (testing / performance / validation)
 """)
 
@@ -273,7 +281,7 @@ with tab1:
 
         df = generate(rows, schema)
 
-        st.success(f"Generated {domain.upper()} / {intent.upper()} dataset")
+        st.success(f"{domain.upper()} / {intent.upper()} dataset generated")
 
         st.dataframe(df.head(20))
 
@@ -282,28 +290,24 @@ with tab1:
 
         st.download_button("Download CSV", df.to_csv(index=False), "data.csv")
 
-        storage.add({
-            "id": str(uuid.uuid4())[:8],
-            "prompt": prompt,
-            "domain": domain,
-            "intent": intent,
-            "rows": rows
-        })
+        storage.add(create_record(prompt, rows, schema, domain, intent))
 
 
 # -----------------------------
-# 📂 HISTORY
+# 📂 HISTORY (SAFE ACCESS)
 # -----------------------------
 with tab2:
 
-    st.subheader("📂 Generated History")
+    st.subheader("📂 History")
 
-    for item in reversed(storage.get()):
+    for item in reversed(storage.get_all()):
 
         st.markdown(f"""
-### 🧾 {item['id']}
-- Prompt: {item['prompt']}
-- Domain: {item['domain']}
-- Intent: {item['intent']}
-- Rows: {item['rows']}
+### 🧾 {item.get('id', 'N/A')}
+- Prompt: {item.get('prompt', '')}
+- Domain: {item.get('domain', 'unknown')}
+- Intent: {item.get('intent', 'unknown')}
+- Rows: {item.get('rows', 0)}
+- Columns: {item.get('cols', [])}
+- Time: {item.get('created_at', '')}
 """)
