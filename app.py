@@ -247,7 +247,16 @@ if st.button("Compare Prices"):
             # =================================================
             with col2:
 
-                st.subheader(row["Product"])
+                # CLICKABLE PRODUCT TITLE
+                st.markdown(
+                    f"""
+                    <a href="{row['Link']}" target="_blank"
+                       style="text-decoration:none;color:white;">
+                       <h3>{row['Product']}</h3>
+                    </a>
+                    """,
+                    unsafe_allow_html=True
+                )
 
                 st.write(f"🏬 Platform: {row['Platform']}")
 
@@ -263,11 +272,26 @@ if st.button("Compare Prices"):
                 if row["price_num"] == min_price:
                     st.success("🏆 Cheapest Deal")
 
-                # BUY BUTTON
+                # CLICKABLE BUY BUTTON
                 if row["Link"]:
-                    st.link_button(
-                        "🛒 Buy Now",
-                        row["Link"]
+
+                    st.markdown(
+                        f"""
+                        <a href="{row['Link']}" target="_blank">
+                            <button style="
+                                background: linear-gradient(90deg,#6366f1,#3b82f6);
+                                color:white;
+                                border:none;
+                                padding:10px 18px;
+                                border-radius:10px;
+                                cursor:pointer;
+                                font-weight:600;
+                            ">
+                                🛒 Buy Now
+                            </button>
+                        </a>
+                        """,
+                        unsafe_allow_html=True
                     )
 
             st.markdown("</div>", unsafe_allow_html=True)
