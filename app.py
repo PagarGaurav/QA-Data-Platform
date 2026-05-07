@@ -1,158 +1,223 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
+from faker import Faker
 import random
 import json
 import os
 import uuid
-from faker import Faker
+from datetime import datetime
 
 fake = Faker()
 
 # -----------------------------
-# 🎬 NETFLIX STYLE UI
+# 🎨 UI
 # -----------------------------
-st.set_page_config(page_title="AI Data Copilot", layout="wide")
+st.set_page_config(page_title="AI Data Generator", layout="wide")
 
 st.markdown("""
 <style>
 .stApp {
     background-color: #0b0f19;
-    color: #ffffff;
+    color: #e5e7eb;
 }
 
-/* Netflix-style cards */
-.card {
-    background: #141a2e;
-    padding: 15px;
-    border-radius: 12px;
-    margin: 10px 0;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
-}
-
-.title {
-    font-size: 22px;
-    font-weight: bold;
-}
-
-.subtitle {
-    color: #9ca3af;
+.stButton > button {
+    background: linear-gradient(90deg, #6366f1, #3b82f6);
+    color: white;
+    border-radius: 10px;
 }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🎬 AI Data Copilot (Netflix Mode)")
+st.title("🧠 AI Data Generator (Safe Production Mode)")
 
 
 # -----------------------------
-# 🧠 STORAGE
+# 🛡 STORAGE (SAFE + BACKWARD COMPATIBLE)
 # -----------------------------
-FILE = "data.json"
+DATA_FILE = "storage.json"
 
-def load():
-    if not os.path.exists(FILE):
-        return {}
-    try:
-        return json.load(open(FILE))
-    except:
-        return {}
 
-def save(data):
-    json.dump(data, open(FILE, "w"), indent=2)
+class Storage:
+
+    def __init__(self, file):
+        self.file = file
+        if not os.path.exists(file):
+            self._write([])
+
+    def _read(self):
+        try:
+            with open(self.file, "r") as f:
+                data = json.load(f)
+                return data if isinstance(data, list) else []
+        except:
+            return []
+
+    def _write(self, data):
+        tmp = self.file + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(data, f, indent=2)
+        os.replace(tmp, self.file)
+
+    def add(self, item):
+        data = self._read()
+        data.append(item)
+        self._write(data)
+
+    def get_all(self):
+        return self._read()
+
+
+storage = Storage(DATA_FILE)
 
 
 # -----------------------------
-# 🧠 INTELLIGENCE ENGINE
+# 🧠 DOMAIN + INTENT
 # -----------------------------
-def smart_detect(prompt):
-
+def detect_intent(prompt):
     text = prompt.lower()
 
-    # SAP
-    if "sap" in text or "vendor" in text or "purchase" in text:
-        return {
-            "domain": "SAP",
-            "fields": [
-                ("vendor", "string"),
-                ("material", "string"),
-                ("quantity", "int"),
-                ("price", "amount"),
-                ("ship_to_party", "string"),
-                ("sold_to_party", "string")
-            ],
-            "confidence": 0.9
-        }
+    if any(x in text for x in ["login", "signup", "authentication"]):
+        return "functional"
 
-    # HEALTH
-    if "health" in text or "patient" in text:
-        return {
-            "domain": "HEALTH",
-            "fields": [
-                ("patient_name", "string"),
-                ("doctor", "string"),
-                ("diagnosis", "string"),
-                ("hospital", "string")
-            ],
-            "confidence": 0.9
-        }
+    return "domain"
 
-    # BANKING
-    if "bank" in text or "account" in text:
-        return {
-            "domain": "BANKING",
-            "fields": [
-                ("account", "int"),
-                ("balance", "amount"),
-                ("transaction", "amount")
-            ],
-            "confidence": 0.9
-        }
 
-    # LOGIN
-    if "login" in text or "user" in text:
-        return {
-            "domain": "LOGIN",
-            "fields": [
-                ("username", "string"),
-                ("email", "string"),
-                ("password", "string"),
-                ("status", "string")
-            ],
-            "confidence": 0.95
-        }
+def detect_domain(prompt):
+    text = prompt.lower()
 
-    return {
-        "domain": "UNKNOWN",
-        "fields": None,
-        "confidence": 0.2
-    }
+    if any(x in text for x in ["sap", "purchase order", "vendor", "plant"]):
+        return "sap"
+
+    if any(x in text for x in ["ecommerce", "order", "product", "cart"]):
+        return "ecommerce"
+
+    if any(x in text for x in ["medical", "patient", "hospital"]):
+        return "medical"
+
+    if any(x in text for x in ["it", "ticket", "bug", "issue"]):
+        return "it"
+
+    return "unknown"
 
 
 # -----------------------------
-# 🧠 VALUE GENERATION
+# 🧱 SCHEMAS
+# -----------------------------
+def sap_schema():
+    return [
+        ("po_number", "int"),
+        ("vendor_name", "name"),
+        ("vendor_email", "email"),
+        ("material_code", "int"),
+        ("plant", "string"),
+        ("quantity", "int"),
+        ("unit_price", "amount"),
+        ("status", "string"),
+        ("po_date", "datetime")
+    ]
+
+
+def ecommerce_schema():
+    return [
+        ("order_id", "int"),
+        ("customer_name", "name"),
+        ("email", "email"),
+        ("product", "string"),
+        ("price", "amount"),
+        ("status", "string")
+    ]
+
+
+def medical_schema():
+    return [
+        ("patient_id", "int"),
+        ("patient_name", "name"),
+        ("age", "int"),
+        ("doctor", "name"),
+        ("diagnosis", "string"),
+        ("hospital", "string")
+    ]
+
+
+def it_schema():
+    return [
+        ("ticket_id", "int"),
+        ("user_name", "name"),
+        ("issue", "string"),
+        ("priority", "string"),
+        ("status", "string")
+    ]
+
+
+def login_schema():
+    return [
+        ("user_id", "int"),
+        ("username", "string"),
+        ("email", "email"),
+        ("password", "string"),
+        ("login_status", "string"),
+        ("device", "string")
+    ]
+
+
+def get_schema(domain, intent):
+    if intent == "functional":
+        return login_schema()
+
+    if domain == "sap":
+        return sap_schema()
+
+    if domain == "ecommerce":
+        return ecommerce_schema()
+
+    if domain == "medical":
+        return medical_schema()
+
+    if domain == "it":
+        return it_schema()
+
+    return None
+
+
+# -----------------------------
+# 🧠 VALUE ENGINE
 # -----------------------------
 def gen_value(t):
 
     if t == "int":
         return random.randint(1000, 99999)
 
+    if t == "name":
+        return fake.name()
+
+    if t == "email":
+        return fake.user_name() + "@gmail.com"
+
     if t == "string":
         return fake.word()
 
     if t == "amount":
-        return round(random.uniform(100, 5000), 2)
+        return round(np.random.uniform(10, 5000), 2)
+
+    if t == "datetime":
+        return fake.date_between(start_date="-2y", end_date="today")
 
     return fake.word()
 
 
-def generate(schema):
-
+def generate(rows, schema):
     data = []
 
-    for i in range(10):
+    for i in range(rows):
         row = {}
 
-        for col, t in schema:
-            row[col] = gen_value(t)
+        for col, typ in schema:
+            if col.endswith("id") or col in ["po_number", "order_id", "ticket_id"]:
+                row[col] = i + 1
+            else:
+                row[col] = gen_value(typ)
 
         data.append(row)
 
@@ -160,109 +225,89 @@ def generate(schema):
 
 
 # -----------------------------
-# 🧠 SESSION
+# 🧾 SAFE RECORD (NORMALIZED)
 # -----------------------------
-if "pending" not in st.session_state:
-    st.session_state.pending = None
+def create_record(prompt, rows, schema, domain, intent):
+
+    return {
+        "id": str(uuid.uuid4())[:8],
+        "prompt": prompt,
+        "rows": rows,
+        "domain": domain,
+        "intent": intent,
+        "cols": [c[0] for c in schema] if schema else [],
+        "created_at": str(datetime.now())
+    }
 
 
 # -----------------------------
-# 🎯 LAYOUT (NETFLIX STYLE)
+# TABS
 # -----------------------------
-col1, col2 = st.columns([1, 2])
+tab1, tab2 = st.tabs(["🚀 Generate", "📂 History"])
+
 
 # -----------------------------
-# LEFT PANEL
+# 🚀 GENERATE
 # -----------------------------
-with col1:
+with tab1:
 
-    st.markdown("### 🧠 AI Copilot")
-
-    prompt = st.text_area("Describe dataset")
+    prompt = st.text_area("💬 Describe dataset")
 
     if st.button("Generate"):
 
-        result = smart_detect(prompt)
-        st.session_state.pending = result
+        intent = detect_intent(prompt)
+        domain = detect_domain(prompt)
 
-        if result["fields"] is None:
+        schema = get_schema(domain, intent)
 
-            st.error("⚠️ I cannot understand this request safely.")
+        # ❌ SAFE MODE: NO GUESSING
+        if schema is None:
 
-            st.info("""
-Try examples:
-- SAP purchase order dataset  
-- Health patient dataset  
-- Banking account dataset  
-- Login test data  
+            st.error("⚠️ I cannot safely generate this dataset without clarity.")
+
+            st.markdown("### ❓ Please specify:")
+            st.write("""
+- SAP / Ecommerce / Medical / IT / Login test  
+- Entity type (users, orders, patients, tickets)  
+- Required fields  
+- Purpose (testing / performance / validation)
 """)
 
-        else:
+            st.stop()
 
-            fields = ", ".join([f[0] for f in result["fields"]])
+        rows = 10
+        if "10k" in prompt.lower():
+            rows = 10000
 
-            st.success(f"""
-📦 Domain: {result['domain']}  
-📊 Fields: {fields}  
-🎯 Confidence: {result['confidence']}  
+        df = generate(rows, schema)
 
-👉 Type YES to generate
+        st.success(f"{domain.upper()} / {intent.upper()} dataset generated")
+
+        st.dataframe(df.head(20))
+
+        st.metric("Rows", len(df))
+        st.metric("Columns", len(df.columns))
+
+        st.download_button("Download CSV", df.to_csv(index=False), "data.csv")
+
+        storage.add(create_record(prompt, rows, schema, domain, intent))
+
+
+# -----------------------------
+# 📂 HISTORY (SAFE ACCESS)
+# -----------------------------
+with tab2:
+
+    st.subheader("📂 History")
+
+    for item in reversed(storage.get_all()):
+
+        st.markdown(f"""
+### 🧾 {item.get('id', 'N/A')}
+- Prompt: {item.get('prompt', '')}
+- Domain: {item.get('domain', 'unknown')}
+- Intent: {item.get('intent', 'unknown')}
+- Rows: {item.get('rows', 0)}
+- Columns: {item.get('cols', [])}
+- Time: {item.get('created_at', '')}
 """)
-
-
-# -----------------------------
-# RIGHT PANEL (PREVIEW)
-# -----------------------------
-with col2:
-
-    st.markdown("### 🎬 Preview Panel")
-
-    if st.session_state.pending:
-
-        result = st.session_state.pending
-
-        if result["fields"] and prompt.lower().strip() == "yes":
-
-            df = generate(result["fields"])
-
-            st.success("Dataset Generated")
-
-            st.dataframe(df, use_container_width=True)
-
-            st.download_button(
-                "⬇ Download CSV",
-                df.to_csv(index=False),
-                "dataset.csv"
-            )
-
-        elif result["fields"]:
-
-            st.info("Waiting for confirmation → type YES")
-
-        else:
-            st.warning("No valid schema detected")
-
-
-# -----------------------------
-# 🎬 NETFLIX GALLERY
-# -----------------------------
-st.markdown("---")
-st.subheader("🎬 Dataset Gallery")
-
-data = load()
-
-if not data:
-    st.info("No datasets yet")
-else:
-    cols = st.columns(3)
-
-    for i, (k, v) in enumerate(data.items()):
-
-        with cols[i % 3]:
-
-            st.markdown(f"""
-<div class="card">
-<div class="title">📦 {v.get('domain')}</div>
-<div class="subtitle">{v.get('fields')}</div>
-</div>
-""", unsafe_allow_html=True)
