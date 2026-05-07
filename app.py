@@ -1,15 +1,11 @@
 import streamlit as st
 import pandas as pd
-import random
 import json
 import os
 import uuid
-from datetime import datetime
 import io
-from faker import Faker
+from datetime import datetime
 from openai import OpenAI
-
-fake = Faker()
 
 # -----------------------------
 # UI (UNCHANGED)
@@ -89,20 +85,16 @@ class Storage:
 storage = Storage(DATA_FILE)
 
 # -----------------------------
-# SCHEMA EXTRACTION (LLM ONLY)
+# SCHEMA (ONLY STRUCTURE)
 # -----------------------------
 def extract_schema(prompt):
-
-    if not client:
-        st.error("API key required")
-        st.stop()
 
     system = """
 Return ONLY JSON array:
 [
   {"name": "column", "type": "name|email|phone|id|address|number|date|text"}
 ]
-No explanation. No extra text.
+No explanation.
 """
 
     res = client.chat.completions.create(
@@ -116,13 +108,10 @@ No explanation. No extra text.
 
     content = res.choices[0].message.content
 
-    try:
-        start = content.index("[")
-        end = content.rindex("]") + 1
-        return json.loads(content[start:end])
-    except:
-        st.error("Schema parsing failed")
-        st.stop()
+    start = content.find("[")
+    end = content.rfind("]") + 1
+
+    return json.loads(content[start:end])
 
 # -----------------------------
 # VALIDATION
@@ -132,61 +121,45 @@ def validate_schema(schema):
     allowed = {"name","email","phone","id","address","number","date","text"}
 
     clean = []
-
     for f in schema:
-        name = f.get("name","col").strip().lower()
-        t = f.get("type","text").strip().lower()
-
-        if t not in allowed:
-            t = "text"
-
-        clean.append({"name": name, "type": t})
+        clean.append({
+            "name": f["name"].strip().lower(),
+            "type": f["type"] if f["type"] in allowed else "text"
+        })
 
     return clean
 
 # -----------------------------
-# TEXT INTELLIGENCE ENGINE (FIXES GARBAGE OUTPUT)
+# 🚀 PRODUCTION FIELD ENGINE (NO FAKER, NO RANDOM TEXT)
 # -----------------------------
-def smart_text(field, person):
+def generate_field_value(field_name, field_type, context):
 
-    f = field.lower()
-    first = person.split()[0]
+    prompt = f"""
+Generate ONE realistic value.
 
-    if "role" in f or "job" in f:
-        return random.choice([
-            "Software Engineer",
-            "Data Analyst",
-            "Project Manager",
-            "Business Analyst",
-            "Consultant"
-        ])
+Field: {field_name}
+Type: {field_type}
+Context: {context}
 
-    if "company" in f:
-        return random.choice([
-            "Google", "Microsoft", "Amazon", "TCS", "Infosys"
-        ])
+Rules:
+- Must be realistic
+- Must match field meaning
+- No explanation
+- Return ONLY value
+"""
 
-    if "status" in f:
-        return random.choice(["Active", "Inactive", "Pending", "Completed"])
+    res = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.3
+    )
 
-    if "feedback" in f:
-        return random.choice([
-            "Good experience",
-            "Very satisfied",
-            "Needs improvement",
-            "Excellent service",
-            "Average experience"
-        ])
-
-    if "description" in f:
-        return f"{first} is a professional with relevant domain experience."
-
-    return f"Valid {field} for {first}"
+    return res.choices[0].message.content.strip()
 
 # -----------------------------
-# ENTERPRISE DATA ENGINE
+# 🚀 ENTERPRISE DATA GENERATION ENGINE
 # -----------------------------
-def generate(fields, rows):
+def generate(fields, rows, prompt):
 
     data = []
 
@@ -194,37 +167,42 @@ def generate(fields, rows):
 
         row = {}
 
-        person = fake.name()
-        first = person.split()[0].lower()
+        # stable identity context
+        context = f"Dataset: {prompt}"
 
         for f in fields:
 
             name = f["name"]
             t = f["type"]
 
+            # deterministic core fields
             if t == "name":
-                row[name] = person
+                row[name] = generate_field_value(name, "name", context)
 
             elif t == "email":
-                row[name] = f"{first}{random.randint(10,999)}@gmail.com"
+                row[name] = generate_field_value(name, "email", context)
 
             elif t == "phone":
-                row[name] = f"+91-{random.randint(70000,99999)}-{random.randint(10000,99999)}"
+                row[name] = generate_field_value(name, "phone", context)
 
             elif t == "address":
-                row[name] = f"{fake.city()}, {fake.country()}"
+                row[name] = generate_field_value(name, "address", context)
 
             elif t == "id":
                 row[name] = str(uuid.uuid4())
 
             elif t == "number":
-                row[name] = random.randint(1, 10000)
+                val = generate_field_value(name, "number", context)
+                try:
+                    row[name] = int(''.join(filter(str.isdigit, val)))
+                except:
+                    row[name] = 0
 
             elif t == "date":
-                row[name] = fake.date_between("-3y", "today").isoformat()
+                row[name] = generate_field_value(name, "date", context)
 
             else:
-                row[name] = smart_text(name, person)
+                row[name] = generate_field_value(name, "text", context)
 
         data.append(row)
 
@@ -240,7 +218,7 @@ if "df" not in st.session_state:
     st.session_state.df = None
 
 # -----------------------------
-# TABS (UNCHANGED)
+# TABS (UNCHANGED UI)
 # -----------------------------
 tab1, tab2 = st.tabs(["🚀 Generate", "📂 History"])
 
@@ -254,12 +232,11 @@ with tab1:
 
     if st.button("Generate"):
 
-        st.session_state["last_prompt"] = prompt
-
         schema = extract_schema(prompt)
         schema = validate_schema(schema)
 
-        df = generate(schema, rows)
+        df = generate(schema, rows, prompt)
+
         st.session_state.df = df
 
         storage.add({
@@ -307,16 +284,5 @@ with tab2:
             <h4 style="color:white;">📦 {item.get('name')}</h4>
         </div>
         """, unsafe_allow_html=True)
-
-        fields = item.get("fields", [])
-
-        preview = pd.DataFrame([
-            {f["name"]: fake.word() for f in fields}
-            for _ in range(3)
-        ])
-
-        preview.index = range(1, len(preview) + 1)
-
-        st.dataframe(preview)
 
         st.markdown("---")
