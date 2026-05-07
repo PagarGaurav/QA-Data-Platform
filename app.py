@@ -99,7 +99,7 @@ class Storage:
 storage = Storage(DATA_FILE)
 
 # -----------------------------
-# OPENAI SCHEMA GENERATION
+# OPENAI SCHEMA INFERENCE
 # -----------------------------
 def extract_schema(prompt):
 
@@ -117,9 +117,8 @@ Return ONLY JSON array:
 
 Rules:
 - No explanation
-- No extra text
 - No duplicates
-- Use snake_case
+- snake_case only
 """
 
     res = client.chat.completions.create(
@@ -145,7 +144,7 @@ Rules:
 # -----------------------------
 def validate_schema(schema):
 
-    allowed_types = {
+    allowed = {
         "id","name","email","phone","address","pincode",
         "status","int","float","date","string"
     }
@@ -163,7 +162,7 @@ def validate_schema(schema):
 
         seen.add(name)
 
-        if t not in allowed_types:
+        if t not in allowed:
             t = "string"
 
         clean.append({"name": name, "type": t})
@@ -175,62 +174,77 @@ def validate_schema(schema):
     return clean
 
 # -----------------------------
-# SAFE VALUE ENGINE
-# -----------------------------
-def gen_value(name, t):
-
-    n = name.lower()
-
-    if "id" in n:
-        return str(uuid.uuid4())[:10]
-
-    if "name" in n:
-        return fake.name()
-
-    if "email" in n:
-        return fake.email()
-
-    if "phone" in n:
-        return "+91" + str(random.randint(6000000000, 9999999999))
-
-    if "address" in n:
-        return fake.address().replace("\n", ", ")
-
-    if "pincode" in n:
-        return random.randint(100000, 999999)
-
-    if "status" in n:
-        return random.choice(["ACTIVE","INACTIVE","PENDING","BLOCKED"])
-
-    if t == "int":
-        return random.randint(1, 9999)
-
-    if t == "float":
-        return round(random.uniform(100, 100000), 2)
-
-    if t == "date":
-        return fake.date_this_year().isoformat()
-
-    return fake.word()
-
-# -----------------------------
-# GENERATOR
+# CONSISTENT ROW ENGINE (FIXED)
 # -----------------------------
 def generate(fields, rows):
 
     data = []
 
     for _ in range(rows):
+
+        # 🔥 ENTITY BASE (CONSISTENCY CORE)
+        first = fake.first_name()
+        last = fake.last_name()
+        full_name = f"{first} {last}"
+
+        email = f"{first.lower()}.{last.lower()}@gmail.com"
+
+        address = fake.address().replace("\n", ", ")
+        pincode = random.randint(100000, 999999)
+
         row = {}
 
         for f in fields:
-            row[f["name"]] = gen_value(f["name"], f["type"])
+
+            n = f["name"].lower()
+            t = f["type"]
+
+            # NAME CONSISTENCY
+            if "name" in n:
+                row[f["name"]] = full_name
+
+            # EMAIL CONSISTENCY
+            elif "email" in n:
+                row[f["name"]] = email
+
+            # PHONE
+            elif "phone" in n:
+                row[f["name"]] = "+91" + str(random.randint(6000000000, 9999999999))
+
+            # ADDRESS
+            elif "address" in n:
+                row[f["name"]] = address
+
+            # PINCODE
+            elif "pincode" in n or "pin" in n:
+                row[f["name"]] = pincode
+
+            # ID
+            elif "id" in n:
+                row[f["name"]] = str(uuid.uuid4())[:10]
+
+            # STATUS
+            elif "status" in n:
+                row[f["name"]] = random.choice(["ACTIVE","INACTIVE","PENDING","BLOCKED"])
+
+            # NUMERIC
+            elif t == "int":
+                row[f["name"]] = random.randint(1, 9999)
+
+            elif t == "float":
+                row[f["name"]] = round(random.uniform(100, 100000), 2)
+
+            elif t == "date":
+                row[f["name"]] = fake.date_this_year().isoformat()
+
+            else:
+                row[f["name"]] = fake.word()
 
         data.append(row)
 
     df = pd.DataFrame(data)
 
-    # INDEX FIX (START FROM 1)
+    # INDEX START FROM 1 (FIXED)
     df.index = range(1, len(df) + 1)
 
     return df
@@ -318,7 +332,7 @@ with tab2:
         fields = item.get("fields", [])
 
         preview = pd.DataFrame([
-            {f["name"]: gen_value(f["name"], f["type"]) for f in fields}
+            {f["name"]: fake.word() for f in fields}
             for _ in range(3)
         ])
 
