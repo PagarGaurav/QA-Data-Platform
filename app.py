@@ -11,9 +11,9 @@ from openai import OpenAI
 
 fake = Faker()
 
-# -----------------------------
-# UI (DO NOT CHANGE)
-# -----------------------------
+# =========================================================
+# UI (UNCHANGED)
+# =========================================================
 st.set_page_config(page_title="AI Data Generator", layout="wide")
 
 st.markdown("""
@@ -48,20 +48,51 @@ section[data-testid="stSidebar"] {
 
 st.title("🧠 AI Data Generator")
 
-# -----------------------------
+# =========================================================
 # CONFIG
-# -----------------------------
+# =========================================================
 api_key = st.sidebar.text_input("🔑 OpenAI API Key", type="password")
 client = OpenAI(api_key=api_key) if api_key else None
 
-# -----------------------------
+# =========================================================
+# MODE SELECTOR
+# =========================================================
+mode = st.sidebar.selectbox(
+    "🧠 Generation Mode",
+    [
+        "Auto Detect",
+        "HR",
+        "CRM",
+        "Banking",
+        "Ecommerce",
+        "Healthcare",
+        "Education",
+        "Finance",
+        "Analytics",
+        "IoT",
+        "Social Media",
+        "Cybersecurity",
+        "QA Testing",
+        "SQL Relational",
+        "API Mock",
+        "AI Training",
+        "Edge Cases",
+        "Localization",
+        "Time Series",
+        "Streaming"
+    ]
+)
+
+# =========================================================
 # STORAGE
-# -----------------------------
+# =========================================================
 DATA_FILE = "storage.json"
 
 class Storage:
+
     def __init__(self, file):
         self.file = file
+
         if not os.path.exists(file):
             self._write([])
 
@@ -73,9 +104,12 @@ class Storage:
             return []
 
     def _write(self, data):
+
         tmp = self.file + ".tmp"
+
         with open(tmp, "w") as f:
             json.dump(data, f, indent=2)
+
         os.replace(tmp, self.file)
 
     def add(self, item):
@@ -96,53 +130,104 @@ class Storage:
 
 storage = Storage(DATA_FILE)
 
-# -----------------------------
+# =========================================================
+# HELPERS
+# =========================================================
+def valid_phone():
+    return "+91" + random.choice(["6","7","8","9"]) + "".join(
+        [str(random.randint(0, 9)) for _ in range(9)]
+    )
+
+def valid_email(name):
+    first = name.split()[0].lower()
+    return f"{first}{random.randint(10,999)}@gmail.com"
+
+def random_date():
+    return fake.date_between("-3y", "today").isoformat()
+
+def detect_mode(prompt):
+
+    p = prompt.lower()
+
+    rules = {
+        "HR": ["employee", "salary", "designation", "department"],
+        "CRM": ["lead", "sales", "customer", "deal"],
+        "Banking": ["bank", "loan", "kyc", "account"],
+        "Ecommerce": ["product", "inventory", "sku", "order"],
+        "Healthcare": ["patient", "doctor", "hospital"],
+        "Education": ["student", "exam", "school"],
+        "Finance": ["invoice", "transaction", "expense"],
+        "Analytics": ["kpi", "analytics", "dashboard"],
+        "IoT": ["sensor", "telemetry", "device"],
+        "Cybersecurity": ["ip", "security", "alert", "threat"],
+    }
+
+    for mode_name, keywords in rules.items():
+        if any(k in p for k in keywords):
+            return mode_name
+
+    return "Generic"
+
+# =========================================================
 # SCHEMA EXTRACTION
-# -----------------------------
+# =========================================================
 def extract_schema(prompt):
 
+    if not client:
+        st.error("API key required")
+        st.stop()
+
     system = """
-Return ONLY JSON array:
+Return ONLY JSON array.
+
+Example:
 [
-  {"name": "column"}
+  {"name":"employee_name"},
+  {"name":"salary"}
 ]
 """
 
     res = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": prompt}
+            {"role":"system","content":system},
+            {"role":"user","content":prompt}
         ],
         temperature=0.2
     )
 
     content = res.choices[0].message.content
 
-    start = content.find("[")
-    end = content.rfind("]") + 1
+    try:
+        start = content.find("[")
+        end = content.rfind("]") + 1
 
-    return json.loads(content[start:end])
+        return json.loads(content[start:end])
 
-# -----------------------------
-# 🚀 LEVEL 2 REALISTIC ENGINE
-# -----------------------------
-def generate(fields, rows, prompt):
+    except:
+        st.error("Invalid schema response")
+        st.code(content)
+        st.stop()
 
-    prompt_lower = prompt.lower()
+# =========================================================
+# HR MODE
+# =========================================================
+def generate_hr(fields, rows):
 
-    # detect domain
-    domain = "generic"
-    if any(x in prompt_lower for x in ["employee", "hr", "salary", "designation"]):
-        domain = "hr"
-    elif any(x in prompt_lower for x in ["customer", "crm", "lead", "sales"]):
-        domain = "crm"
-    elif any(x in prompt_lower for x in ["bank", "account", "loan", "kyc"]):
-        domain = "bank"
+    roles = {
+        "Software Engineer": (60000, 180000),
+        "Data Analyst": (50000, 120000),
+        "Manager": (100000, 250000),
+        "HR Executive": (40000, 90000)
+    }
 
-    hr_roles = ["Software Engineer", "Data Analyst", "Manager", "Consultant", "HR Executive"]
-    crm_status = ["New", "Contacted", "Qualified", "Lost", "Won"]
-    general_status = ["Active", "Inactive", "Pending", "Completed"]
+    departments = [
+        "Engineering",
+        "Finance",
+        "HR",
+        "Operations",
+        "Product"
+    ]
 
     data = []
 
@@ -151,104 +236,285 @@ def generate(fields, rows, prompt):
         row = {}
 
         name = fake.name()
-        first = name.split()[0].lower()
-
-        email = f"{first}{random.randint(10,999)}@gmail.com"
-
-        # VALID INDIAN MOBILE NUMBER
-        phone = "+91" + random.choice(["6","7","8","9"]) + "".join(
-            [str(random.randint(0,9)) for _ in range(9)]
-        )
-
-        role = random.choice(hr_roles)
+        role = random.choice(list(roles.keys()))
+        salary = random.randint(*roles[role])
 
         for f in fields:
 
             col = f["name"].lower()
 
-            # ---------------- IDENTITY ----------------
             if "name" in col:
                 row[col] = name
 
             elif "email" in col:
-                row[col] = email
+                row[col] = valid_email(name)
 
-            elif "phone" in col or "mobile" in col:
-                row[col] = phone
+            elif "phone" in col:
+                row[col] = valid_phone()
 
-            # ---------------- LOCATION ----------------
-            elif "address" in col or "city" in col:
-                row[col] = f"{fake.city()}, {fake.country()}"
+            elif "salary" in col:
+                row[col] = salary
 
-            # ---------------- IDS ----------------
-            elif "id" in col:
-                row[col] = str(uuid.uuid4())[:10]
+            elif "designation" in col or "role" in col:
+                row[col] = role
 
-            # ---------------- AGE ----------------
+            elif "department" in col:
+                row[col] = random.choice(departments)
+
+            elif "date" in col:
+                row[col] = random_date()
+
             elif "age" in col:
                 row[col] = random.randint(22, 60)
 
-            # ---------------- SALARY (REALISTIC) ----------------
-            elif "salary" in col:
-
-                salary_map = {
-                    "Software Engineer": (60000, 180000),
-                    "Data Analyst": (50000, 120000),
-                    "Manager": (90000, 250000),
-                    "Consultant": (70000, 200000),
-                    "HR Executive": (40000, 90000),
-                }
-
-                row[col] = random.randint(*salary_map[role])
-
-            # ---------------- ROLE ----------------
-            elif "role" in col or "designation" in col:
-                row[col] = role
-
-            # ---------------- STATUS ----------------
-            elif "status" in col:
-                if domain == "crm":
-                    row[col] = random.choice(crm_status)
-                else:
-                    row[col] = random.choice(general_status)
-
-            # ---------------- BANK ----------------
-            elif "balance" in col or "amount" in col:
-
-                if domain == "bank":
-                    row[col] = random.randint(1000, 1000000)
-                else:
-                    row[col] = random.randint(1000, 500000)
-
-            # ---------------- DATE ----------------
-            elif "date" in col:
-                row[col] = fake.date_between("-3y", "today").isoformat()
-
-            # ---------------- DEFAULT ----------------
             else:
                 row[col] = fake.word()
 
         data.append(row)
 
-    df = pd.DataFrame(data)
-    df.index = range(1, len(df) + 1)
+    return pd.DataFrame(data)
+
+# =========================================================
+# CRM MODE
+# =========================================================
+def generate_crm(fields, rows):
+
+    statuses = ["New", "Qualified", "Won", "Lost"]
+
+    data = []
+
+    for _ in range(rows):
+
+        row = {}
+
+        name = fake.name()
+
+        for f in fields:
+
+            col = f["name"].lower()
+
+            if "name" in col:
+                row[col] = name
+
+            elif "email" in col:
+                row[col] = valid_email(name)
+
+            elif "phone" in col:
+                row[col] = valid_phone()
+
+            elif "status" in col:
+                row[col] = random.choice(statuses)
+
+            elif "deal" in col or "amount" in col:
+                row[col] = random.randint(10000, 500000)
+
+            elif "date" in col:
+                row[col] = random_date()
+
+            else:
+                row[col] = fake.word()
+
+        data.append(row)
+
+    return pd.DataFrame(data)
+
+# =========================================================
+# BANKING MODE
+# =========================================================
+def generate_banking(fields, rows):
+
+    account_types = ["Savings", "Current", "Business"]
+
+    data = []
+
+    for _ in range(rows):
+
+        row = {}
+
+        name = fake.name()
+
+        for f in fields:
+
+            col = f["name"].lower()
+
+            if "name" in col:
+                row[col] = name
+
+            elif "email" in col:
+                row[col] = valid_email(name)
+
+            elif "phone" in col:
+                row[col] = valid_phone()
+
+            elif "account" in col:
+                row[col] = random.randint(1000000000, 9999999999)
+
+            elif "balance" in col:
+                row[col] = random.randint(5000, 5000000)
+
+            elif "kyc" in col:
+                row[col] = random.choice(["Verified", "Pending"])
+
+            elif "type" in col:
+                row[col] = random.choice(account_types)
+
+            else:
+                row[col] = fake.word()
+
+        data.append(row)
+
+    return pd.DataFrame(data)
+
+# =========================================================
+# ANALYTICS MODE
+# =========================================================
+def generate_analytics(fields, rows):
+
+    data = []
+    base = 100
+
+    for _ in range(rows):
+
+        row = {}
+
+        for f in fields:
+
+            col = f["name"].lower()
+
+            if "date" in col:
+                row[col] = random_date()
+
+            elif "sales" in col or "revenue" in col:
+                base += random.randint(-10, 30)
+                row[col] = base
+
+            else:
+                row[col] = random.randint(1, 100)
+
+        data.append(row)
+
+    return pd.DataFrame(data)
+
+# =========================================================
+# QA MODE
+# =========================================================
+def generate_qa(fields, rows):
+
+    data = []
+
+    for i in range(rows):
+
+        row = {}
+
+        for f in fields:
+
+            col = f["name"].lower()
+
+            if i % 5 == 0:
+                row[col] = None
+
+            elif i % 7 == 0:
+                row[col] = "INVALID_DATA"
+
+            else:
+                row[col] = fake.word()
+
+        data.append(row)
+
+    return pd.DataFrame(data)
+
+# =========================================================
+# GENERIC MODE
+# =========================================================
+def generate_generic(fields, rows):
+
+    data = []
+
+    for _ in range(rows):
+
+        row = {}
+
+        name = fake.name()
+
+        for f in fields:
+
+            col = f["name"].lower()
+
+            if "name" in col:
+                row[col] = name
+
+            elif "email" in col:
+                row[col] = valid_email(name)
+
+            elif "phone" in col:
+                row[col] = valid_phone()
+
+            elif "city" in col:
+                row[col] = fake.city()
+
+            elif "address" in col:
+                row[col] = fake.address().replace("\n", ", ")
+
+            elif "date" in col:
+                row[col] = random_date()
+
+            elif "id" in col:
+                row[col] = str(uuid.uuid4())[:10]
+
+            elif "amount" in col or "price" in col:
+                row[col] = random.randint(1000, 500000)
+
+            else:
+                row[col] = fake.word()
+
+        data.append(row)
+
+    return pd.DataFrame(data)
+
+# =========================================================
+# ROUTER
+# =========================================================
+def generate_dataset(mode, fields, rows, prompt):
+
+    if mode == "Auto Detect":
+        mode = detect_mode(prompt)
+
+    generators = {
+        "HR": generate_hr,
+        "CRM": generate_crm,
+        "Banking": generate_banking,
+        "Analytics": generate_analytics,
+        "QA Testing": generate_qa,
+    }
+
+    fn = generators.get(mode, generate_generic)
+
+    return fn(fields, rows)
+
+# =========================================================
+# VALIDATION / REPAIR
+# =========================================================
+def repair_dataframe(df):
+
+    for col in df.columns:
+        df[col] = df[col].fillna("N/A")
 
     return df
 
-# -----------------------------
+# =========================================================
 # SESSION
-# -----------------------------
+# =========================================================
 if "df" not in st.session_state:
     st.session_state.df = None
 
-# -----------------------------
-# TABS (UNCHANGED UI)
-# -----------------------------
+# =========================================================
+# TABS
+# =========================================================
 tab1, tab2 = st.tabs(["🚀 Generate", "📂 History"])
 
-# =============================
+# =========================================================
 # GENERATE
-# =============================
+# =========================================================
 with tab1:
 
     prompt = st.text_area("💬 Describe dataset")
@@ -256,13 +522,19 @@ with tab1:
 
     if st.button("Generate"):
 
-        if not client:
-            st.error("API key required")
-            st.stop()
-
         schema = extract_schema(prompt)
 
-        df = generate(schema, rows, prompt)
+        df = generate_dataset(
+            mode,
+            schema,
+            rows,
+            prompt
+        )
+
+        df = repair_dataframe(df)
+
+        df.index = range(1, len(df) + 1)
+
         st.session_state.df = df
 
         storage.add({
@@ -281,20 +553,33 @@ with tab1:
         col1, col2, col3 = st.columns(3)
 
         with col1:
-            st.download_button("CSV", st.session_state.df.to_csv(index=False), "data.csv")
+            st.download_button(
+                "CSV",
+                st.session_state.df.to_csv(index=False),
+                "data.csv"
+            )
 
         with col2:
-            st.download_button("JSON", st.session_state.df.to_json(orient="records"), "data.json")
+            st.download_button(
+                "JSON",
+                st.session_state.df.to_json(orient="records"),
+                "data.json"
+            )
 
         with col3:
             buffer = io.BytesIO()
             st.session_state.df.to_excel(buffer, index=False)
             buffer.seek(0)
-            st.download_button("Excel", buffer, "data.xlsx")
 
-# =============================
-# HISTORY (UNCHANGED UI)
-# =============================
+            st.download_button(
+                "Excel",
+                buffer,
+                "data.xlsx"
+            )
+
+# =========================================================
+# HISTORY
+# =========================================================
 with tab2:
 
     data = storage.get_all()
@@ -318,23 +603,43 @@ with tab2:
         </div>
         """, unsafe_allow_html=True)
 
-        df = pd.DataFrame(item.get("fields", []))
+        fields = item.get("fields", [])
 
-        st.dataframe(df)
+        preview = pd.DataFrame([
+            {f["name"]: fake.word() for f in fields}
+            for _ in range(3)
+        ])
+
+        preview.index = range(1, len(preview) + 1)
+
+        st.dataframe(preview)
 
         c1, c2, c3, c4 = st.columns(4)
 
         with c1:
-            st.download_button("CSV", df.to_csv(index=False), file_name=f"{item['id']}.csv")
+            st.download_button(
+                "CSV",
+                preview.to_csv(index=False),
+                file_name=f"{item['id']}.csv"
+            )
 
         with c2:
-            st.download_button("JSON", df.to_json(orient="records"), file_name=f"{item['id']}.json")
+            st.download_button(
+                "JSON",
+                preview.to_json(orient="records"),
+                file_name=f"{item['id']}.json"
+            )
 
         with c3:
             buffer = io.BytesIO()
-            df.to_excel(buffer, index=False)
+            preview.to_excel(buffer, index=False)
             buffer.seek(0)
-            st.download_button("Excel", buffer, file_name=f"{item['id']}.xlsx")
+
+            st.download_button(
+                "Excel",
+                buffer,
+                file_name=f"{item['id']}.xlsx"
+            )
 
         with c4:
             if st.button(f"🗑 Delete {item['id']}", key=item["id"]):
