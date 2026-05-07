@@ -18,6 +18,7 @@ st.set_page_config(page_title="AI Data Generator", layout="wide")
 
 st.markdown("""
 <style>
+
 .stApp {
     background-color: #0b0f19;
     color: #e5e7eb;
@@ -36,9 +37,21 @@ st.markdown("""
     border-radius: 8px;
 }
 
-label {
-    color: white !important;
+/* -----------------------------
+   🔑 API KEY FIX (NEW ADDITION)
+------------------------------*/
+section[data-testid="stSidebar"] label {
+    color: #000000 !important;
+    font-weight: 600;
 }
+
+section[data-testid="stSidebar"] input {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    border-radius: 8px;
+    border: 1px solid #d1d5db !important;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -99,7 +112,7 @@ storage = Storage(DATA_FILE)
 
 
 # -----------------------------
-# SCHEMA (SAFE FALLBACK)
+# SCHEMA (SAFE SIMPLE)
 # -----------------------------
 def smart_schema(prompt):
 
@@ -122,14 +135,6 @@ def smart_schema(prompt):
             {"name": "age", "type": "int"},
             {"name": "email", "type": "email"},
             {"name": "phone", "type": "phone"}
-        ]
-
-    elif any(k in text for k in ["sap", "vendor"]):
-        fields += [
-            {"name": "vendor_name", "type": "string"},
-            {"name": "material", "type": "id"},
-            {"name": "quantity", "type": "int"},
-            {"name": "amount", "type": "amount"}
         ]
 
     else:
@@ -179,7 +184,7 @@ def gen_value(field):
 
 
 # -----------------------------
-# GENERATOR
+# GENERATE
 # -----------------------------
 def generate(fields, rows):
 
@@ -190,7 +195,7 @@ def generate(fields, rows):
         data.append(row)
 
     df = pd.DataFrame(data)
-    df.index = range(1, len(df) + 1)  # START FROM 1
+    df.index = range(1, len(df) + 1)
 
     return df
 
@@ -237,39 +242,22 @@ with tab1:
 
         st.success("Dataset generated")
 
-
     if st.session_state.df is not None:
-
         st.dataframe(st.session_state.df)
 
         col1, col2 = st.columns(2)
 
         with col1:
-            st.download_button(
-                "⬇ CSV",
-                st.session_state.df.to_csv(index=False),
-                "data.csv"
-            )
+            st.download_button("⬇ CSV", st.session_state.df.to_csv(index=False), "data.csv")
 
         with col2:
-            st.download_button(
-                "⬇ JSON",
-                json.dumps(st.session_state.record, indent=2),
-                "data.json"
-            )
+            st.download_button("⬇ JSON", json.dumps(st.session_state.record, indent=2), "data.json")
 
 
 # =============================
-# 📂 HISTORY (FIXED)
+# 📂 HISTORY
 # =============================
 with tab2:
-
-    colA, colB = st.columns([8, 2])
-
-    with colB:
-        if st.button("🗑 Delete All"):
-            storage.clear_all()
-            st.rerun()
 
     data = storage.get_all()
 
@@ -283,13 +271,12 @@ with tab2:
         <div style="
             background:#111827;
             padding:12px;
-            border-radius:12px;
+            border-radius:10px;
             margin-bottom:10px;">
-            <h4 style="color:white;">📦 {item.get('name')}</h4>
+        📦 {item.get('name')}
         </div>
         """, unsafe_allow_html=True)
 
-        # 🔥 REAL DATA PREVIEW (NO JSON / NO SCHEMA)
         fields = item.get("fields", [])
 
         preview = pd.DataFrame([
@@ -320,5 +307,3 @@ with tab2:
         if st.button("🗑 Delete", key=item["id"]):
             storage.delete(item["id"])
             st.rerun()
-
-        st.markdown("---")
