@@ -64,22 +64,9 @@ mode = st.sidebar.selectbox(
         "HR",
         "CRM",
         "Banking",
-        "Ecommerce",
-        "Healthcare",
-        "Education",
-        "Finance",
         "Analytics",
-        "IoT",
-        "Social Media",
-        "Cybersecurity",
         "QA Testing",
-        "SQL Relational",
-        "API Mock",
-        "AI Training",
-        "Edge Cases",
-        "Localization",
-        "Time Series",
-        "Streaming"
+        "Generic"
     ]
 )
 
@@ -134,13 +121,13 @@ storage = Storage(DATA_FILE)
 # HELPERS
 # =========================================================
 def valid_phone():
-    return "+91" + random.choice(["6","7","8","9"]) + "".join(
+    return "+91" + random.choice(["6", "7", "8", "9"]) + "".join(
         [str(random.randint(0, 9)) for _ in range(9)]
     )
 
 def valid_email(name):
     first = name.split()[0].lower()
-    return f"{first}{random.randint(10,999)}@gmail.com"
+    return f"{first}{random.randint(100,999)}@gmail.com"
 
 def random_date():
     return fake.date_between("-3y", "today").isoformat()
@@ -153,13 +140,7 @@ def detect_mode(prompt):
         "HR": ["employee", "salary", "designation", "department"],
         "CRM": ["lead", "sales", "customer", "deal"],
         "Banking": ["bank", "loan", "kyc", "account"],
-        "Ecommerce": ["product", "inventory", "sku", "order"],
-        "Healthcare": ["patient", "doctor", "hospital"],
-        "Education": ["student", "exam", "school"],
-        "Finance": ["invoice", "transaction", "expense"],
         "Analytics": ["kpi", "analytics", "dashboard"],
-        "IoT": ["sensor", "telemetry", "device"],
-        "Cybersecurity": ["ip", "security", "alert", "threat"],
     }
 
     for mode_name, keywords in rules.items():
@@ -169,7 +150,7 @@ def detect_mode(prompt):
     return "Generic"
 
 # =========================================================
-# SCHEMA EXTRACTION
+# BULLETPROOF SCHEMA EXTRACTION
 # =========================================================
 def extract_schema(prompt):
 
@@ -185,29 +166,77 @@ Example:
   {"name":"employee_name"},
   {"name":"salary"}
 ]
+
+Rules:
+- Every item MUST contain "name"
+- No extra text
 """
 
-    res = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role":"system","content":system},
-            {"role":"user","content":prompt}
-        ],
-        temperature=0.2
-    )
-
-    content = res.choices[0].message.content
-
     try:
+
+        res = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role":"system","content":system},
+                {"role":"user","content":prompt}
+            ],
+            temperature=0.1
+        )
+
+        content = res.choices[0].message.content
+
         start = content.find("[")
         end = content.rfind("]") + 1
 
-        return json.loads(content[start:end])
+        raw = json.loads(content[start:end])
 
-    except:
-        st.error("Invalid schema response")
-        st.code(content)
-        st.stop()
+        cleaned = []
+
+        for item in raw:
+
+            # STRING
+            if isinstance(item, str):
+
+                cleaned.append({
+                    "name": item.strip().lower().replace(" ", "_")
+                })
+
+            # DICT
+            elif isinstance(item, dict):
+
+                if "name" in item:
+                    val = item["name"]
+
+                elif "column" in item:
+                    val = item["column"]
+
+                elif "field" in item:
+                    val = item["field"]
+
+                else:
+                    val = "unknown_column"
+
+                cleaned.append({
+                    "name": str(val).strip().lower().replace(" ", "_")
+                })
+
+        if not cleaned:
+
+            cleaned = [
+                {"name":"name"},
+                {"name":"email"},
+                {"name":"phone"}
+            ]
+
+        return cleaned
+
+    except Exception:
+
+        return [
+            {"name":"name"},
+            {"name":"email"},
+            {"name":"phone"}
+        ]
 
 # =========================================================
 # HR MODE
@@ -241,7 +270,7 @@ def generate_hr(fields, rows):
 
         for f in fields:
 
-            col = f["name"].lower()
+            col = str(f.get("name", "unknown")).lower()
 
             if "name" in col:
                 row[col] = name
@@ -249,7 +278,7 @@ def generate_hr(fields, rows):
             elif "email" in col:
                 row[col] = valid_email(name)
 
-            elif "phone" in col:
+            elif "phone" in col or "mobile" in col:
                 row[col] = valid_phone()
 
             elif "salary" in col:
@@ -261,11 +290,11 @@ def generate_hr(fields, rows):
             elif "department" in col:
                 row[col] = random.choice(departments)
 
-            elif "date" in col:
-                row[col] = random_date()
-
             elif "age" in col:
                 row[col] = random.randint(22, 60)
+
+            elif "date" in col:
+                row[col] = random_date()
 
             else:
                 row[col] = fake.word()
@@ -291,7 +320,7 @@ def generate_crm(fields, rows):
 
         for f in fields:
 
-            col = f["name"].lower()
+            col = str(f.get("name", "unknown")).lower()
 
             if "name" in col:
                 row[col] = name
@@ -299,7 +328,7 @@ def generate_crm(fields, rows):
             elif "email" in col:
                 row[col] = valid_email(name)
 
-            elif "phone" in col:
+            elif "phone" in col or "mobile" in col:
                 row[col] = valid_phone()
 
             elif "status" in col:
@@ -335,7 +364,7 @@ def generate_banking(fields, rows):
 
         for f in fields:
 
-            col = f["name"].lower()
+            col = str(f.get("name", "unknown")).lower()
 
             if "name" in col:
                 row[col] = name
@@ -343,7 +372,7 @@ def generate_banking(fields, rows):
             elif "email" in col:
                 row[col] = valid_email(name)
 
-            elif "phone" in col:
+            elif "phone" in col or "mobile" in col:
                 row[col] = valid_phone()
 
             elif "account" in col:
@@ -357,6 +386,9 @@ def generate_banking(fields, rows):
 
             elif "type" in col:
                 row[col] = random.choice(account_types)
+
+            elif "date" in col:
+                row[col] = random_date()
 
             else:
                 row[col] = fake.word()
@@ -379,7 +411,7 @@ def generate_analytics(fields, rows):
 
         for f in fields:
 
-            col = f["name"].lower()
+            col = str(f.get("name", "unknown")).lower()
 
             if "date" in col:
                 row[col] = random_date()
@@ -408,7 +440,7 @@ def generate_qa(fields, rows):
 
         for f in fields:
 
-            col = f["name"].lower()
+            col = str(f.get("name", "unknown")).lower()
 
             if i % 5 == 0:
                 row[col] = None
@@ -438,7 +470,7 @@ def generate_generic(fields, rows):
 
         for f in fields:
 
-            col = f["name"].lower()
+            col = str(f.get("name", "unknown")).lower()
 
             if "name" in col:
                 row[col] = name
@@ -446,7 +478,7 @@ def generate_generic(fields, rows):
             elif "email" in col:
                 row[col] = valid_email(name)
 
-            elif "phone" in col:
+            elif "phone" in col or "mobile" in col:
                 row[col] = valid_phone()
 
             elif "city" in col:
@@ -463,6 +495,9 @@ def generate_generic(fields, rows):
 
             elif "amount" in col or "price" in col:
                 row[col] = random.randint(1000, 500000)
+
+            elif "age" in col:
+                row[col] = random.randint(18, 65)
 
             else:
                 row[col] = fake.word()
@@ -485,6 +520,7 @@ def generate_dataset(mode, fields, rows, prompt):
         "Banking": generate_banking,
         "Analytics": generate_analytics,
         "QA Testing": generate_qa,
+        "Generic": generate_generic
     }
 
     fn = generators.get(mode, generate_generic)
@@ -492,7 +528,7 @@ def generate_dataset(mode, fields, rows, prompt):
     return fn(fields, rows)
 
 # =========================================================
-# VALIDATION / REPAIR
+# REPAIR
 # =========================================================
 def repair_dataframe(df):
 
@@ -568,7 +604,12 @@ with tab1:
 
         with col3:
             buffer = io.BytesIO()
-            st.session_state.df.to_excel(buffer, index=False)
+
+            st.session_state.df.to_excel(
+                buffer,
+                index=False
+            )
+
             buffer.seek(0)
 
             st.download_button(
@@ -606,7 +647,7 @@ with tab2:
         fields = item.get("fields", [])
 
         preview = pd.DataFrame([
-            {f["name"]: fake.word() for f in fields}
+            {str(f.get("name", "unknown")): fake.word() for f in fields}
             for _ in range(3)
         ])
 
@@ -632,7 +673,12 @@ with tab2:
 
         with c3:
             buffer = io.BytesIO()
-            preview.to_excel(buffer, index=False)
+
+            preview.to_excel(
+                buffer,
+                index=False
+            )
+
             buffer.seek(0)
 
             st.download_button(
@@ -642,7 +688,10 @@ with tab2:
             )
 
         with c4:
-            if st.button(f"🗑 Delete {item['id']}", key=item["id"]):
+            if st.button(
+                f"🗑 Delete {item['id']}",
+                key=item["id"]
+            ):
                 storage.delete(item["id"])
                 st.rerun()
 
