@@ -5,167 +5,154 @@ import json
 import os
 import uuid
 from faker import Faker
-from datetime import datetime
 
 fake = Faker()
 
 # -----------------------------
-# 🎨 SAAS UI
+# 🎬 NETFLIX STYLE UI
 # -----------------------------
-st.set_page_config(page_title="AI Data Copilot SaaS", layout="wide")
+st.set_page_config(page_title="AI Data Copilot", layout="wide")
 
 st.markdown("""
 <style>
 .stApp {
     background-color: #0b0f19;
-    color: #e5e7eb;
+    color: #ffffff;
 }
 
-.block-container {
-    padding-top: 2rem;
+/* Netflix-style cards */
+.card {
+    background: #141a2e;
+    padding: 15px;
+    border-radius: 12px;
+    margin: 10px 0;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
 }
 
-.stButton > button {
-    background: linear-gradient(90deg, #6366f1, #3b82f6);
-    color: white;
-    border-radius: 10px;
-    border: none;
+.title {
+    font-size: 22px;
+    font-weight: bold;
 }
 
-.stTextInput > div > div > input {
-    background-color: #111827;
-    color: white;
+.subtitle {
+    color: #9ca3af;
 }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🧠 AI Data Copilot SaaS (MVP)")
+st.title("🎬 AI Data Copilot (Netflix Mode)")
 
 
 # -----------------------------
-# 🗂 STORAGE (MULTI USER READY)
+# 🧠 STORAGE
 # -----------------------------
-DATA_FILE = "copilot_data.json"
+FILE = "data.json"
 
-def load_data():
-    if not os.path.exists(DATA_FILE):
+def load():
+    if not os.path.exists(FILE):
         return {}
     try:
-        with open(DATA_FILE, "r") as f:
-            return json.load(f)
+        return json.load(open(FILE))
     except:
         return {}
 
-def save_data(data):
-    tmp = DATA_FILE + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(data, f, indent=2)
-    os.replace(tmp, DATA_FILE)
+def save(data):
+    json.dump(data, open(FILE, "w"), indent=2)
 
 
 # -----------------------------
-# 🧠 SESSION STATE (COPILOT MEMORY)
+# 🧠 INTELLIGENCE ENGINE
 # -----------------------------
-if "schema" not in st.session_state:
-    st.session_state.schema = []
+def smart_detect(prompt):
 
-if "domain" not in st.session_state:
-    st.session_state.domain = None
+    text = prompt.lower()
 
-if "step" not in st.session_state:
-    st.session_state.step = 0
+    # SAP
+    if "sap" in text or "vendor" in text or "purchase" in text:
+        return {
+            "domain": "SAP",
+            "fields": [
+                ("vendor", "string"),
+                ("material", "string"),
+                ("quantity", "int"),
+                ("price", "amount"),
+                ("ship_to_party", "string"),
+                ("sold_to_party", "string")
+            ],
+            "confidence": 0.9
+        }
 
-if "chat" not in st.session_state:
-    st.session_state.chat = []
+    # HEALTH
+    if "health" in text or "patient" in text:
+        return {
+            "domain": "HEALTH",
+            "fields": [
+                ("patient_name", "string"),
+                ("doctor", "string"),
+                ("diagnosis", "string"),
+                ("hospital", "string")
+            ],
+            "confidence": 0.9
+        }
 
+    # BANKING
+    if "bank" in text or "account" in text:
+        return {
+            "domain": "BANKING",
+            "fields": [
+                ("account", "int"),
+                ("balance", "amount"),
+                ("transaction", "amount")
+            ],
+            "confidence": 0.9
+        }
 
-# -----------------------------
-# 🧠 DOMAIN DETECTION
-# -----------------------------
-def detect_domain(text):
+    # LOGIN
+    if "login" in text or "user" in text:
+        return {
+            "domain": "LOGIN",
+            "fields": [
+                ("username", "string"),
+                ("email", "string"),
+                ("password", "string"),
+                ("status", "string")
+            ],
+            "confidence": 0.95
+        }
 
-    text = text.lower()
-
-    if any(x in text for x in ["sap", "vendor", "material", "purchase", "po"]):
-        return "sap"
-
-    if any(x in text for x in ["health", "patient", "doctor", "hospital"]):
-        return "health"
-
-    if any(x in text for x in ["bank", "account", "loan", "transaction"]):
-        return "banking"
-
-    return "generic"
-
-
-# -----------------------------
-# 🧠 COPILOT QUESTIONS
-# -----------------------------
-def next_question(domain, schema):
-
-    if domain == "sap":
-        flow = [
-            "Which SAP object? (PO / Sales Order / Vendor Master)",
-            "Do you need pricing fields? (yes/no)",
-            "Do you need Ship-to & Sold-to parties? (yes/no)"
-        ]
-
-    elif domain == "health":
-        flow = [
-            "Which entity? (Patient / Doctor / Appointment)",
-            "Need diagnosis fields? (yes/no)",
-            "Need hospital details? (yes/no)"
-        ]
-
-    elif domain == "banking":
-        flow = [
-            "Which object? (Account / Loan / Transaction)",
-            "Need balance & interest? (yes/no)",
-            "Need branch info? (yes/no)"
-        ]
-
-    else:
-        flow = [
-            "What dataset do you want?",
-            "List fields separated by comma"
-        ]
-
-    if len(schema) < len(flow):
-        return flow[len(schema)]
-
-    return None
+    return {
+        "domain": "UNKNOWN",
+        "fields": None,
+        "confidence": 0.2
+    }
 
 
 # -----------------------------
-# 🧠 SCHEMA BUILDER
+# 🧠 VALUE GENERATION
 # -----------------------------
-def update_schema(input_text):
+def gen_value(t):
 
-    text = input_text.lower()
+    if t == "int":
+        return random.randint(1000, 99999)
 
-    if "yes" in text:
-        st.session_state.schema.append(("extra_field", "string"))
+    if t == "string":
+        return fake.word()
 
-    elif "," in input_text:
-        fields = [x.strip() for x in input_text.split(",")]
-        for f in fields:
-            st.session_state.schema.append((f, "string"))
+    if t == "amount":
+        return round(random.uniform(100, 5000), 2)
 
-
-# -----------------------------
-# 🧠 DATA GENERATION
-# -----------------------------
-def gen_value():
     return fake.word()
 
+
 def generate(schema):
+
     data = []
 
     for i in range(10):
         row = {}
 
-        for col, _ in schema:
-            row[col] = gen_value()
+        for col, t in schema:
+            row[col] = gen_value(t)
 
         data.append(row)
 
@@ -173,94 +160,109 @@ def generate(schema):
 
 
 # -----------------------------
-# 🧠 UI LAYOUT
+# 🧠 SESSION
 # -----------------------------
-col1, col2 = st.columns([2, 1])
+if "pending" not in st.session_state:
+    st.session_state.pending = None
 
-# LEFT: COPILOT CHAT
+
+# -----------------------------
+# 🎯 LAYOUT (NETFLIX STYLE)
+# -----------------------------
+col1, col2 = st.columns([1, 2])
+
+# -----------------------------
+# LEFT PANEL
+# -----------------------------
 with col1:
 
-    st.subheader("💬 Copilot Chat")
+    st.markdown("### 🧠 AI Copilot")
 
-    user_input = st.text_input("Talk to Copilot")
+    prompt = st.text_area("Describe dataset")
 
-    if st.button("Send"):
+    if st.button("Generate"):
 
-        # INIT DOMAIN
-        if st.session_state.domain is None:
-            st.session_state.domain = detect_domain(user_input)
+        result = smart_detect(prompt)
+        st.session_state.pending = result
 
-        # UPDATE SCHEMA
-        update_schema(user_input)
+        if result["fields"] is None:
 
-        st.session_state.chat.append(("user", user_input))
+            st.error("⚠️ I cannot understand this request safely.")
 
-        # CHECK NEXT STEP
-        q = next_question(st.session_state.domain, st.session_state.schema)
+            st.info("""
+Try examples:
+- SAP purchase order dataset  
+- Health patient dataset  
+- Banking account dataset  
+- Login test data  
+""")
 
-        if q:
-            st.session_state.chat.append(("ai", q))
         else:
 
-            st.success("Schema complete. Generating dataset...")
+            fields = ", ".join([f[0] for f in result["fields"]])
 
-            df = generate(st.session_state.schema)
+            st.success(f"""
+📦 Domain: {result['domain']}  
+📊 Fields: {fields}  
+🎯 Confidence: {result['confidence']}  
 
-            st.dataframe(df)
+👉 Type YES to generate
+""")
+
+
+# -----------------------------
+# RIGHT PANEL (PREVIEW)
+# -----------------------------
+with col2:
+
+    st.markdown("### 🎬 Preview Panel")
+
+    if st.session_state.pending:
+
+        result = st.session_state.pending
+
+        if result["fields"] and prompt.lower().strip() == "yes":
+
+            df = generate(result["fields"])
+
+            st.success("Dataset Generated")
+
+            st.dataframe(df, use_container_width=True)
 
             st.download_button(
-                "Download CSV",
+                "⬇ Download CSV",
                 df.to_csv(index=False),
                 "dataset.csv"
             )
 
-            # SAVE TO SaaS HISTORY
-            data = load_data()
+        elif result["fields"]:
 
-            uid = str(uuid.uuid4())[:8]
+            st.info("Waiting for confirmation → type YES")
 
-            data[uid] = {
-                "schema": st.session_state.schema,
-                "domain": st.session_state.domain,
-                "created_at": str(datetime.now())
-            }
-
-            save_data(data)
-
-            # RESET COPILOT
-            st.session_state.schema = []
-            st.session_state.domain = None
-            st.session_state.chat = []
-
-
-    # CHAT DISPLAY
-    for role, msg in st.session_state.chat:
-        if role == "user":
-            st.markdown(f"🧑‍💻 **You:** {msg}")
         else:
-            st.markdown(f"🤖 **Copilot:** {msg}")
+            st.warning("No valid schema detected")
 
 
-# RIGHT: SaaS PANEL
-with col2:
+# -----------------------------
+# 🎬 NETFLIX GALLERY
+# -----------------------------
+st.markdown("---")
+st.subheader("🎬 Dataset Gallery")
 
-    st.subheader("📦 SaaS Dashboard")
+data = load()
 
-    data = load_data()
+if not data:
+    st.info("No datasets yet")
+else:
+    cols = st.columns(3)
 
-    if not data:
-        st.info("No datasets yet")
-    else:
-        for k, v in data.items():
+    for i, (k, v) in enumerate(data.items()):
+
+        with cols[i % 3]:
 
             st.markdown(f"""
-### 🧾 Dataset {k}
-- Domain: {v.get('domain','')}
-- Created: {v.get('created_at','')}
-- Fields: {v.get('schema',[])}
-""")
-
-            if st.button(f"Delete {k}"):
-                del data[k]
-                save_data(data)
-                st.rerun()
+<div class="card">
+<div class="title">📦 {v.get('domain')}</div>
+<div class="subtitle">{v.get('fields')}</div>
+</div>
+""", unsafe_allow_html=True)
