@@ -12,7 +12,7 @@ from openai import OpenAI
 fake = Faker()
 
 # -----------------------------
-# UI (NO CHANGE)
+# UI (DO NOT CHANGE)
 # -----------------------------
 st.set_page_config(page_title="AI Data Generator", layout="wide")
 
@@ -97,17 +97,15 @@ class Storage:
 storage = Storage(DATA_FILE)
 
 # -----------------------------
-# SCHEMA (SINGLE CALL ONLY)
+# SCHEMA EXTRACTION (FAST)
 # -----------------------------
 def extract_schema(prompt):
 
     system = """
-Return ONLY JSON:
-{
- "columns":[
-   {"name":"column","type":"name|email|phone|id|address|number|date|text"}
- ]
-}
+Return ONLY JSON array:
+[
+  {"name": "column"}
+]
 """
 
     res = client.chat.completions.create(
@@ -121,57 +119,51 @@ Return ONLY JSON:
 
     content = res.choices[0].message.content
 
-    start = content.find("{")
-    end = content.rfind("}") + 1
+    start = content.find("[")
+    end = content.rfind("]") + 1
 
-    return json.loads(content[start:end])["columns"]
-
-# -----------------------------
-# VALIDATION
-# -----------------------------
-def validate(schema):
-
-    allowed = {"name","email","phone","id","address","number","date","text"}
-
-    clean = []
-    for f in schema:
-        clean.append({
-            "name": f["name"].lower(),
-            "type": f["type"] if f["type"] in allowed else "text"
-        })
-
-    return clean
+    return json.loads(content[start:end])
 
 # -----------------------------
-# 🧠 SMART COLUMN MAPPER (V6 FIX CORE)
+# 🧠 SEMANTIC COLUMN MAPPER (CRITICAL FIX)
 # -----------------------------
-def infer_type(col):
+def semantic_map_schema(schema, prompt):
 
-    c = col.lower()
+    system = """
+You map dataset columns to correct semantic types.
 
-    if any(x in c for x in ["name","person","customer"]):
-        return "name"
-    if any(x in c for x in ["email","mail"]):
-        return "email"
-    if any(x in c for x in ["phone","mobile"]):
-        return "phone"
-    if any(x in c for x in ["address","city","location"]):
-        return "address"
-    if any(x in c for x in ["id","uuid"]):
-        return "id"
-    if any(x in c for x in ["age","salary","amount","price"]):
-        return "number"
-    if any(x in c for x in ["date","time","created"]):
-        return "date"
-    if any(x in c for x in ["role","job","designation"]):
-        return "role"
-    if any(x in c for x in ["status"]):
-        return "status"
+Return ONLY JSON array:
+[
+ {"name":"col","type":"name|email|phone|id|address|number|date|role|status|text"}
+]
 
-    return "text"
+Rules:
+- Understand meaning (designation = role, residence = address, etc.)
+- No keyword matching only
+- Be logically correct
+"""
+
+    res = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": f"""
+Prompt: {prompt}
+Columns: {json.dumps(schema)}
+"""}
+        ],
+        temperature=0
+    )
+
+    content = res.choices[0].message.content
+
+    start = content.find("[")
+    end = content.rfind("]") + 1
+
+    return json.loads(content[start:end])
 
 # -----------------------------
-# 🧠 CORE GENERATION ENGINE (V6)
+# 🚀 FAST DATA ENGINE (NO GPT ROWS)
 # -----------------------------
 def generate(fields, rows, prompt):
 
@@ -181,24 +173,24 @@ def generate(fields, rows, prompt):
 
         row = {}
 
-        # consistent identity per row
         person = fake.name()
         first = person.split()[0].lower()
-        base_email = f"{first}{random.randint(10,999)}@gmail.com"
+        email = f"{first}{random.randint(10,999)}@gmail.com"
+        phone = f"+91-{random.randint(70000,99999)}-{random.randint(10000,99999)}"
 
         for f in fields:
 
             name = f["name"]
-            t = infer_type(name)
+            t = f["type"]
 
             if t == "name":
                 row[name] = person
 
             elif t == "email":
-                row[name] = base_email
+                row[name] = email
 
             elif t == "phone":
-                row[name] = f"+91-{random.randint(70000,99999)}-{random.randint(10000,99999)}"
+                row[name] = phone
 
             elif t == "address":
                 row[name] = f"{fake.city()}, {fake.country()}"
@@ -243,7 +235,7 @@ if "df" not in st.session_state:
     st.session_state.df = None
 
 # -----------------------------
-# TABS (UNCHANGED)
+# TABS (UNCHANGED UI)
 # -----------------------------
 tab1, tab2 = st.tabs(["🚀 Generate", "📂 History"])
 
@@ -258,7 +250,9 @@ with tab1:
     if st.button("Generate"):
 
         schema = extract_schema(prompt)
-        schema = validate(schema)
+
+        # 🔥 FIX APPLIED HERE (IMPORTANT)
+        schema = semantic_map_schema(schema, prompt)
 
         df = generate(schema, rows, prompt)
         st.session_state.df = df
