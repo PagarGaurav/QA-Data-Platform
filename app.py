@@ -8,11 +8,12 @@ import os
 import uuid
 from datetime import datetime
 from openai import OpenAI
+import re
 
 fake = Faker()
 
 # -----------------------------
-# 🎨 UI
+# UI
 # -----------------------------
 st.set_page_config(page_title="AI Data Generator", layout="wide")
 
@@ -53,7 +54,7 @@ st.title("🧠 AI Data Generator")
 
 
 # -----------------------------
-# 🔑 API KEY
+# API KEY
 # -----------------------------
 api_key = st.sidebar.text_input("🔑 OpenAI API Key", type="password")
 
@@ -96,6 +97,9 @@ class Storage:
         data = [x for x in data if x.get("id") != item_id]
         self._write(data)
 
+    def clear_all(self):
+        self._write([])
+
     def get_all(self):
         return self._read()
 
@@ -104,7 +108,7 @@ storage = Storage(DATA_FILE)
 
 
 # -----------------------------
-# AI SCHEMA ENGINE
+# AI SCHEMA
 # -----------------------------
 def ai_schema(prompt):
 
@@ -126,7 +130,6 @@ Return ONLY JSON:
     {"name":"...","type":"string|int|amount|email"}
   ]
 }
-No explanation.
 """
             },
             {"role": "user", "content": prompt}
@@ -138,27 +141,81 @@ No explanation.
 
 
 # -----------------------------
-# VALUE ENGINE
+# VALUE GENERATION
 # -----------------------------
-def gen_value(t):
+def gen_value(field):
+
+    name = field["name"].lower()
+    t = field["type"]
+
+    if "name" in name:
+        return fake.name()
+
+    if "email" in name:
+        return fake.first_name().lower() + "." + fake.last_name().lower() + "@gmail.com"
+
+    if "vendor" in name:
+        return "VEN-" + str(random.randint(10000,99999))
+
+    if "material" in name:
+        return "MAT-" + str(random.randint(100000,999999))
+
+    if "po" in name:
+        return "PO-" + str(random.randint(100000,999999))
 
     if t == "int":
-        return random.randint(1000, 99999)
-    if t == "string":
-        return fake.word()
+        return random.randint(1, 5000)
+
     if t == "amount":
-        return round(np.random.uniform(10, 5000), 2)
-    if t == "email":
-        return fake.email()
+        return round(random.uniform(10, 10000), 2)
 
     return fake.word()
 
 
+# -----------------------------
+# VALIDATION + AUTO FIX
+# -----------------------------
+def is_valid_email(v):
+    return bool(re.match(r"^[\w\.-]+@[\w\.-]+\.\w+$", str(v)))
+
+
+def auto_fix(field, value):
+
+    name = field["name"].lower()
+
+    if "email" in name:
+        if not is_valid_email(value):
+            return fake.first_name().lower() + "." + fake.last_name().lower() + "@gmail.com"
+
+    if "vendor" in name:
+        return "VEN-" + str(random.randint(10000,99999))
+
+    if "material" in name:
+        return "MAT-" + str(random.randint(100000,999999))
+
+    if "po" in name:
+        return "PO-" + str(random.randint(100000,999999))
+
+    return value
+
+
+# -----------------------------
+# GENERATOR
+# -----------------------------
 def generate(fields, rows):
-    return pd.DataFrame([
-        {f["name"]: gen_value(f["type"]) for f in fields}
-        for _ in range(rows)
-    ])
+
+    data = []
+
+    for _ in range(rows):
+        row = {}
+
+        for f in fields:
+            val = gen_value(f)
+            row[f["name"]] = auto_fix(f, val)
+
+        data.append(row)
+
+    return pd.DataFrame(data)
 
 
 # -----------------------------
@@ -168,14 +225,14 @@ def get_version(data, name):
     return f"v{len([x for x in data if x.get('name') == name]) + 1}"
 
 
-def create_record(prompt, schema, data_store):
+def create_record(schema, data_store):
 
     return {
         "id": str(uuid.uuid4())[:8],
-        "name": schema.get("name", "Dataset"),
-        "domain": schema.get("domain", "unknown"),
-        "version": get_version(data_store, schema.get("name", "Dataset")),
-        "fields": schema.get("fields", []),
+        "name": schema.get("name"),
+        "domain": schema.get("domain"),
+        "version": get_version(schema, schema.get("name")),
+        "fields": schema.get("fields"),
         "created_at": str(datetime.now())
     }
 
@@ -211,44 +268,38 @@ with tab1:
         df = generate(schema["fields"], rows)
 
         st.session_state.df = df
-        st.session_state.record = create_record(prompt, schema, storage.get_all())
+        st.session_state.record = create_record(schema, storage.get_all())
 
         storage.add(st.session_state.record)
 
         st.success(f"{schema['name']} generated")
 
 
-    # -----------------------------
-    # OUTPUT
-    # -----------------------------
     if st.session_state.df is not None:
 
-        st.markdown("### 📊 Generated Dataset")
         st.dataframe(st.session_state.df)
 
         col1, col2, col3 = st.columns(3)
 
         with col1:
-            if st.button("👁 View Schema"):
-                st.json({
-                    "name": st.session_state.record["name"],
-                    "domain": st.session_state.record["domain"],
-                    "version": st.session_state.record["version"],
-                    "fields": st.session_state.record["fields"]
-                })
+            st.json({
+                "name": st.session_state.record["name"],
+                "domain": st.session_state.record["domain"],
+                "version": st.session_state.record["version"]
+            })
 
         with col2:
             st.download_button(
                 "⬇ CSV",
                 st.session_state.df.to_csv(index=False),
-                "dataset.csv"
+                "data.csv"
             )
 
         with col3:
             st.download_button(
                 "⬇ JSON",
                 json.dumps(st.session_state.record, indent=2),
-                "dataset.json"
+                "data.json"
             )
 
         if st.button("🗑 Delete Last"):
@@ -259,9 +310,17 @@ with tab1:
 
 
 # =============================
-# 📂 HISTORY (CLEAN CARDS)
+# 📂 HISTORY
 # =============================
 with tab2:
+
+    colA, colB = st.columns([8, 2])
+
+    with colB:
+        if st.button("🗑 Delete All History"):
+            storage.clear_all()
+            st.success("All history deleted")
+            st.rerun()
 
     st.subheader("📂 Dataset History")
 
@@ -273,9 +332,7 @@ with tab2:
 
     for item in reversed(data):
 
-        fields_preview = ", ".join(
-            [f["name"] for f in item.get("fields", [])]
-        )
+        fields_preview = ", ".join([f["name"] for f in item.get("fields", [])])
 
         st.markdown(f"""
 <div class="card">
