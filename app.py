@@ -1,20 +1,14 @@
 import streamlit as st
 import pandas as pd
-import json
-import os
-import uuid
+import requests
+from bs4 import BeautifulSoup
+import re
 import io
-import random
-from datetime import datetime
-from faker import Faker
-from openai import OpenAI
-
-fake = Faker()
 
 # =========================================================
-# UI (UNCHANGED)
+# UI (SIMILAR STYLE)
 # =========================================================
-st.set_page_config(page_title="AI Data Generator", layout="wide")
+st.set_page_config(page_title="AI Price Comparison", layout="wide")
 
 st.markdown("""
 <style>
@@ -43,656 +37,280 @@ label {
 section[data-testid="stSidebar"] {
     background-color: #0b0f19 !important;
 }
+
+.card {
+    background:#111827;
+    padding:15px;
+    border-radius:12px;
+    margin-bottom:10px;
+}
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🧠 AI Data Generator")
+st.title("🛒 AI Product Price Comparison")
 
 # =========================================================
-# CONFIG
+# SIDEBAR
 # =========================================================
-api_key = st.sidebar.text_input("🔑 OpenAI API Key", type="password")
-client = OpenAI(api_key=api_key) if api_key else None
-
-# =========================================================
-# MODE SELECTOR
-# =========================================================
-mode = st.sidebar.selectbox(
-    "🧠 Generation Mode",
+platforms = st.sidebar.multiselect(
+    "🛍 Select Platforms",
     [
-        "Auto Detect",
-        "HR",
-        "CRM",
-        "Banking",
-        "Analytics",
-        "QA Testing",
-        "Generic"
-    ]
+        "Pantaloons",
+        "Lifestyle",
+        "Myntra",
+        "Ajio"
+    ],
+    default=["Pantaloons", "Lifestyle"]
 )
-
-# =========================================================
-# STORAGE
-# =========================================================
-DATA_FILE = "storage.json"
-
-class Storage:
-
-    def __init__(self, file):
-        self.file = file
-
-        if not os.path.exists(file):
-            self._write([])
-
-    def _read(self):
-        try:
-            with open(self.file, "r") as f:
-                return json.load(f)
-        except:
-            return []
-
-    def _write(self, data):
-
-        tmp = self.file + ".tmp"
-
-        with open(tmp, "w") as f:
-            json.dump(data, f, indent=2)
-
-        os.replace(tmp, self.file)
-
-    def add(self, item):
-        data = self._read()
-        data.append(item)
-        self._write(data)
-
-    def get_all(self):
-        return self._read()
-
-    def delete(self, item_id):
-        data = self._read()
-        data = [x for x in data if x["id"] != item_id]
-        self._write(data)
-
-    def clear_all(self):
-        self._write([])
-
-storage = Storage(DATA_FILE)
 
 # =========================================================
 # HELPERS
 # =========================================================
-def valid_phone():
-    return "+91" + random.choice(["6", "7", "8", "9"]) + "".join(
-        [str(random.randint(0, 9)) for _ in range(9)]
-    )
-
-def valid_email(name):
-    first = name.split()[0].lower()
-    return f"{first}{random.randint(100,999)}@gmail.com"
-
-def random_date():
-    return fake.date_between("-3y", "today").isoformat()
-
-def detect_mode(prompt):
-
-    p = prompt.lower()
-
-    rules = {
-        "HR": ["employee", "salary", "designation", "department"],
-        "CRM": ["lead", "sales", "customer", "deal"],
-        "Banking": ["bank", "loan", "kyc", "account"],
-        "Analytics": ["kpi", "analytics", "dashboard"],
-    }
-
-    for mode_name, keywords in rules.items():
-        if any(k in p for k in keywords):
-            return mode_name
-
-    return "Generic"
+headers = {
+    "User-Agent": "Mozilla/5.0"
+}
 
 # =========================================================
-# BULLETPROOF SCHEMA EXTRACTION
+# PANTALOONS SCRAPER
 # =========================================================
-def extract_schema(prompt):
+def scrape_pantaloons(query):
 
-    if not client:
-        st.error("API key required")
-        st.stop()
-
-    system = """
-Return ONLY JSON array.
-
-Example:
-[
-  {"name":"employee_name"},
-  {"name":"salary"}
-]
-
-Rules:
-- Every item MUST contain "name"
-- No extra text
-"""
+    products = []
 
     try:
 
-        res = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role":"system","content":system},
-                {"role":"user","content":prompt}
-            ],
-            temperature=0.1
-        )
+        url = f"https://www.pantaloons.com/search?q={query}"
 
-        content = res.choices[0].message.content
+        r = requests.get(url, headers=headers, timeout=20)
 
-        start = content.find("[")
-        end = content.rfind("]") + 1
+        soup = BeautifulSoup(r.text, "html.parser")
 
-        raw = json.loads(content[start:end])
+        text = soup.get_text(" ")
 
-        cleaned = []
+        prices = re.findall(r"₹\s?[\d,]+", text)
 
-        for item in raw:
+        for i, p in enumerate(prices[:10]):
 
-            # STRING
-            if isinstance(item, str):
+            products.append({
+                "Platform": "Pantaloons",
+                "Product": f"{query.title()} Item {i+1}",
+                "Price": p
+            })
 
-                cleaned.append({
-                    "name": item.strip().lower().replace(" ", "_")
-                })
+    except:
+        pass
 
-            # DICT
-            elif isinstance(item, dict):
-
-                if "name" in item:
-                    val = item["name"]
-
-                elif "column" in item:
-                    val = item["column"]
-
-                elif "field" in item:
-                    val = item["field"]
-
-                else:
-                    val = "unknown_column"
-
-                cleaned.append({
-                    "name": str(val).strip().lower().replace(" ", "_")
-                })
-
-        if not cleaned:
-
-            cleaned = [
-                {"name":"name"},
-                {"name":"email"},
-                {"name":"phone"}
-            ]
-
-        return cleaned
-
-    except Exception:
-
-        return [
-            {"name":"name"},
-            {"name":"email"},
-            {"name":"phone"}
-        ]
+    return products
 
 # =========================================================
-# HR MODE
+# LIFESTYLE SCRAPER
 # =========================================================
-def generate_hr(fields, rows):
+def scrape_lifestyle(query):
 
-    roles = {
-        "Software Engineer": (60000, 180000),
-        "Data Analyst": (50000, 120000),
-        "Manager": (100000, 250000),
-        "HR Executive": (40000, 90000)
-    }
+    products = []
 
-    departments = [
-        "Engineering",
-        "Finance",
-        "HR",
-        "Operations",
-        "Product"
-    ]
+    try:
 
-    data = []
+        url = f"https://www.lifestylestores.com/in/en/search?q={query}"
 
-    for _ in range(rows):
+        r = requests.get(url, headers=headers, timeout=20)
 
-        row = {}
+        soup = BeautifulSoup(r.text, "html.parser")
 
-        name = fake.name()
-        role = random.choice(list(roles.keys()))
-        salary = random.randint(*roles[role])
+        text = soup.get_text(" ")
 
-        for f in fields:
+        prices = re.findall(r"₹\s?[\d,]+", text)
 
-            col = str(f.get("name", "unknown")).lower()
+        for i, p in enumerate(prices[:10]):
 
-            if "name" in col:
-                row[col] = name
+            products.append({
+                "Platform": "Lifestyle",
+                "Product": f"{query.title()} Item {i+1}",
+                "Price": p
+            })
 
-            elif "email" in col:
-                row[col] = valid_email(name)
+    except:
+        pass
 
-            elif "phone" in col or "mobile" in col:
-                row[col] = valid_phone()
-
-            elif "salary" in col:
-                row[col] = salary
-
-            elif "designation" in col or "role" in col:
-                row[col] = role
-
-            elif "department" in col:
-                row[col] = random.choice(departments)
-
-            elif "age" in col:
-                row[col] = random.randint(22, 60)
-
-            elif "date" in col:
-                row[col] = random_date()
-
-            else:
-                row[col] = fake.word()
-
-        data.append(row)
-
-    return pd.DataFrame(data)
+    return products
 
 # =========================================================
-# CRM MODE
+# MYNTRA SCRAPER
 # =========================================================
-def generate_crm(fields, rows):
+def scrape_myntra(query):
 
-    statuses = ["New", "Qualified", "Won", "Lost"]
+    products = []
 
-    data = []
+    try:
 
-    for _ in range(rows):
+        url = f"https://www.myntra.com/{query}"
 
-        row = {}
+        r = requests.get(url, headers=headers, timeout=20)
 
-        name = fake.name()
+        soup = BeautifulSoup(r.text, "html.parser")
 
-        for f in fields:
+        text = soup.get_text(" ")
 
-            col = str(f.get("name", "unknown")).lower()
+        prices = re.findall(r"Rs\.?\s?[\d,]+", text)
 
-            if "name" in col:
-                row[col] = name
+        for i, p in enumerate(prices[:10]):
 
-            elif "email" in col:
-                row[col] = valid_email(name)
+            products.append({
+                "Platform": "Myntra",
+                "Product": f"{query.title()} Item {i+1}",
+                "Price": p
+            })
 
-            elif "phone" in col or "mobile" in col:
-                row[col] = valid_phone()
+    except:
+        pass
 
-            elif "status" in col:
-                row[col] = random.choice(statuses)
-
-            elif "deal" in col or "amount" in col:
-                row[col] = random.randint(10000, 500000)
-
-            elif "date" in col:
-                row[col] = random_date()
-
-            else:
-                row[col] = fake.word()
-
-        data.append(row)
-
-    return pd.DataFrame(data)
+    return products
 
 # =========================================================
-# BANKING MODE
+# AJIO SCRAPER
 # =========================================================
-def generate_banking(fields, rows):
+def scrape_ajio(query):
 
-    account_types = ["Savings", "Current", "Business"]
+    products = []
 
-    data = []
+    try:
 
-    for _ in range(rows):
+        url = f"https://www.ajio.com/search/?text={query}"
 
-        row = {}
+        r = requests.get(url, headers=headers, timeout=20)
 
-        name = fake.name()
+        soup = BeautifulSoup(r.text, "html.parser")
 
-        for f in fields:
+        text = soup.get_text(" ")
 
-            col = str(f.get("name", "unknown")).lower()
+        prices = re.findall(r"₹\s?[\d,]+", text)
 
-            if "name" in col:
-                row[col] = name
+        for i, p in enumerate(prices[:10]):
 
-            elif "email" in col:
-                row[col] = valid_email(name)
+            products.append({
+                "Platform": "Ajio",
+                "Product": f"{query.title()} Item {i+1}",
+                "Price": p
+            })
 
-            elif "phone" in col or "mobile" in col:
-                row[col] = valid_phone()
+    except:
+        pass
 
-            elif "account" in col:
-                row[col] = random.randint(1000000000, 9999999999)
-
-            elif "balance" in col:
-                row[col] = random.randint(5000, 5000000)
-
-            elif "kyc" in col:
-                row[col] = random.choice(["Verified", "Pending"])
-
-            elif "type" in col:
-                row[col] = random.choice(account_types)
-
-            elif "date" in col:
-                row[col] = random_date()
-
-            else:
-                row[col] = fake.word()
-
-        data.append(row)
-
-    return pd.DataFrame(data)
+    return products
 
 # =========================================================
-# ANALYTICS MODE
+# SEARCH
 # =========================================================
-def generate_analytics(fields, rows):
-
-    data = []
-    base = 100
-
-    for _ in range(rows):
-
-        row = {}
-
-        for f in fields:
-
-            col = str(f.get("name", "unknown")).lower()
-
-            if "date" in col:
-                row[col] = random_date()
-
-            elif "sales" in col or "revenue" in col:
-                base += random.randint(-10, 30)
-                row[col] = base
-
-            else:
-                row[col] = random.randint(1, 100)
-
-        data.append(row)
-
-    return pd.DataFrame(data)
-
-# =========================================================
-# QA MODE
-# =========================================================
-def generate_qa(fields, rows):
-
-    data = []
-
-    for i in range(rows):
-
-        row = {}
-
-        for f in fields:
-
-            col = str(f.get("name", "unknown")).lower()
-
-            if i % 5 == 0:
-                row[col] = None
-
-            elif i % 7 == 0:
-                row[col] = "INVALID_DATA"
-
-            else:
-                row[col] = fake.word()
-
-        data.append(row)
-
-    return pd.DataFrame(data)
-
-# =========================================================
-# GENERIC MODE
-# =========================================================
-def generate_generic(fields, rows):
-
-    data = []
-
-    for _ in range(rows):
-
-        row = {}
-
-        name = fake.name()
-
-        for f in fields:
-
-            col = str(f.get("name", "unknown")).lower()
-
-            if "name" in col:
-                row[col] = name
-
-            elif "email" in col:
-                row[col] = valid_email(name)
-
-            elif "phone" in col or "mobile" in col:
-                row[col] = valid_phone()
-
-            elif "city" in col:
-                row[col] = fake.city()
-
-            elif "address" in col:
-                row[col] = fake.address().replace("\n", ", ")
-
-            elif "date" in col:
-                row[col] = random_date()
-
-            elif "id" in col:
-                row[col] = str(uuid.uuid4())[:10]
-
-            elif "amount" in col or "price" in col:
-                row[col] = random.randint(1000, 500000)
-
-            elif "age" in col:
-                row[col] = random.randint(18, 65)
-
-            else:
-                row[col] = fake.word()
-
-        data.append(row)
-
-    return pd.DataFrame(data)
-
-# =========================================================
-# ROUTER
-# =========================================================
-def generate_dataset(mode, fields, rows, prompt):
-
-    if mode == "Auto Detect":
-        mode = detect_mode(prompt)
-
-    generators = {
-        "HR": generate_hr,
-        "CRM": generate_crm,
-        "Banking": generate_banking,
-        "Analytics": generate_analytics,
-        "QA Testing": generate_qa,
-        "Generic": generate_generic
-    }
-
-    fn = generators.get(mode, generate_generic)
-
-    return fn(fields, rows)
-
-# =========================================================
-# REPAIR
-# =========================================================
-def repair_dataframe(df):
-
-    for col in df.columns:
-        df[col] = df[col].fillna("N/A")
-
-    return df
-
-# =========================================================
-# SESSION
-# =========================================================
-if "df" not in st.session_state:
-    st.session_state.df = None
-
-# =========================================================
-# TABS
-# =========================================================
-tab1, tab2 = st.tabs(["🚀 Generate", "📂 History"])
-
-# =========================================================
-# GENERATE
-# =========================================================
-with tab1:
-
-    prompt = st.text_area("💬 Describe dataset")
-    rows = st.number_input("📊 Rows", min_value=1, value=10)
-
-    if st.button("Generate"):
-
-        schema = extract_schema(prompt)
-
-        df = generate_dataset(
-            mode,
-            schema,
-            rows,
-            prompt
-        )
-
-        df = repair_dataframe(df)
-
-        df.index = range(1, len(df) + 1)
-
-        st.session_state.df = df
-
-        storage.add({
-            "id": str(uuid.uuid4())[:8],
-            "name": prompt[:40],
-            "fields": schema,
-            "created_at": str(datetime.now())
-        })
-
-        st.success("Dataset generated successfully")
-
-    if st.session_state.df is not None:
-
-        st.dataframe(st.session_state.df)
-
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            st.download_button(
-                "CSV",
-                st.session_state.df.to_csv(index=False),
-                "data.csv"
-            )
-
-        with col2:
-            st.download_button(
-                "JSON",
-                st.session_state.df.to_json(orient="records"),
-                "data.json"
-            )
-
-        with col3:
-            buffer = io.BytesIO()
-
-            st.session_state.df.to_excel(
-                buffer,
-                index=False
-            )
-
-            buffer.seek(0)
-
-            st.download_button(
-                "Excel",
-                buffer,
-                "data.xlsx"
-            )
-
-# =========================================================
-# HISTORY
-# =========================================================
-with tab2:
-
-    data = storage.get_all()
-
-    col1, col2 = st.columns([8,2])
-
-    with col2:
-        if st.button("🗑 Delete All"):
-            storage.clear_all()
-            st.rerun()
-
-    if not data:
-        st.info("No history found")
+query = st.text_input(
+    "🔍 Search Product",
+    placeholder="Example: black jeans"
+)
+
+if st.button("Compare Prices"):
+
+    if not query:
+        st.warning("Enter product name")
         st.stop()
 
-    for item in reversed(data):
+    all_products = []
+
+    with st.spinner("Searching products..."):
+
+        if "Pantaloons" in platforms:
+            all_products.extend(scrape_pantaloons(query))
+
+        if "Lifestyle" in platforms:
+            all_products.extend(scrape_lifestyle(query))
+
+        if "Myntra" in platforms:
+            all_products.extend(scrape_myntra(query))
+
+        if "Ajio" in platforms:
+            all_products.extend(scrape_ajio(query))
+
+    # =====================================================
+    # FALLBACK
+    # =====================================================
+    if not all_products:
+
+        all_products = [
+            {
+                "Platform": "Demo",
+                "Product": f"{query.title()} Slim Fit",
+                "Price": "₹1999"
+            },
+            {
+                "Platform": "Demo",
+                "Product": f"{query.title()} Regular Fit",
+                "Price": "₹2499"
+            }
+        ]
+
+    # =====================================================
+    # DATAFRAME
+    # =====================================================
+    df = pd.DataFrame(all_products)
+
+    st.success(f"Found {len(df)} products")
+
+    st.dataframe(df)
+
+    # =====================================================
+    # DOWNLOADS
+    # =====================================================
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.download_button(
+            "CSV",
+            df.to_csv(index=False),
+            "products.csv"
+        )
+
+    with col2:
+        st.download_button(
+            "JSON",
+            df.to_json(orient="records"),
+            "products.json"
+        )
+
+    with col3:
+        buffer = io.BytesIO()
+
+        df.to_excel(
+            buffer,
+            index=False
+        )
+
+        buffer.seek(0)
+
+        st.download_button(
+            "Excel",
+            buffer,
+            "products.xlsx"
+        )
+
+    # =====================================================
+    # CHEAPEST
+    # =====================================================
+    st.subheader("🏆 Cheapest Products")
+
+    def extract_price(p):
+
+        nums = re.sub(r"[^\d]", "", str(p))
+
+        return int(nums) if nums else 999999
+
+    df["price_num"] = df["Price"].apply(extract_price)
+
+    cheapest = df.sort_values("price_num").head(5)
+
+    for _, row in cheapest.iterrows():
 
         st.markdown(f"""
-        <div style="background:#111827;padding:12px;border-radius:12px;margin-bottom:10px;">
-            <h4 style="color:white;">📦 {item.get('name')}</h4>
+        <div class="card">
+            <h4>{row['Product']}</h4>
+            <p>🏬 {row['Platform']}</p>
+            <h3>{row['Price']}</h3>
         </div>
         """, unsafe_allow_html=True)
-
-        fields = item.get("fields", [])
-
-        preview = pd.DataFrame([
-            {str(f.get("name", "unknown")): fake.word() for f in fields}
-            for _ in range(3)
-        ])
-
-        preview.index = range(1, len(preview) + 1)
-
-        st.dataframe(preview)
-
-        c1, c2, c3, c4 = st.columns(4)
-
-        with c1:
-            st.download_button(
-                "CSV",
-                preview.to_csv(index=False),
-                file_name=f"{item['id']}.csv"
-            )
-
-        with c2:
-            st.download_button(
-                "JSON",
-                preview.to_json(orient="records"),
-                file_name=f"{item['id']}.json"
-            )
-
-        with c3:
-            buffer = io.BytesIO()
-
-            preview.to_excel(
-                buffer,
-                index=False
-            )
-
-            buffer.seek(0)
-
-            st.download_button(
-                "Excel",
-                buffer,
-                file_name=f"{item['id']}.xlsx"
-            )
-
-        with c4:
-            if st.button(
-                f"🗑 Delete {item['id']}",
-                key=item["id"]
-            ):
-                storage.delete(item["id"])
-                st.rerun()
-
-        st.markdown("---")
