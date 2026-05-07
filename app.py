@@ -1,157 +1,57 @@
-import streamlit as st
-import pandas as pd
-import random
-import json
 import uuid
-from datetime import datetime
+import random
 from faker import Faker
-from openai import OpenAI
 
 fake = Faker()
 
 # -----------------------------
-# PAGE CONFIG
-# -----------------------------
-st.set_page_config(page_title="AI Data Generator", layout="wide")
-
-st.markdown("""
-<style>
-
-.stApp {
-    background-color: #0b0f19;
-    color: #e5e7eb;
-}
-
-.stButton > button {
-    background: linear-gradient(90deg, #6366f1, #3b82f6);
-    color: white;
-    border-radius: 10px;
-}
-
-label {
-    color: white !important;
-    font-weight: 600;
-}
-
-</style>
-""", unsafe_allow_html=True)
-
-st.title("🧠 AI Data Generator (Enterprise Safe GPT Mode)")
-
-
-# -----------------------------
-# API KEY (MANDATORY FOR GPT)
-# -----------------------------
-api_key = st.text_input("🔑 OpenAI API Key", type="password")
-
-client = OpenAI(api_key=api_key) if api_key else None
-
-
-# -----------------------------
-# STRICT TYPES
+# STRICT TYPE SYSTEM
 # -----------------------------
 ALLOWED_TYPES = {"string", "int", "email", "phone", "amount", "id"}
 
 
 # -----------------------------
-# GPT → SCHEMA ONLY
+# CLEAN VALUE GENERATOR (NO BAD DATA)
 # -----------------------------
-def gpt_schema(prompt):
+def generate_value(field):
 
-    if not client:
-        return None
+    name = field["name"].lower()
+    t = field["type"]
 
-    try:
-        res = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": """
-You ONLY generate JSON schema.
-
-Rules:
-- No extra text
-- No hallucinated fields
-- Only valid types: string, int, email, phone, amount, id
-
-Return format:
-{
-  "name": "Dataset",
-  "fields": [
-    {"name": "field", "type": "string"}
-  ]
-}
-"""
-                },
-                {"role": "user", "content": prompt}
-            ],
-            response_format={"type": "json_object"}
-        )
-
-        return json.loads(res.choices[0].message.content)
-
-    except:
-        return None
-
-
-# -----------------------------
-# VALIDATION ENGINE (CRITICAL)
-# -----------------------------
-def validate_schema(schema):
-
-    if not schema or "fields" not in schema:
-        return None
-
-    clean = []
-    seen = set()
-
-    for f in schema["fields"]:
-
-        name = str(f.get("name", "")).strip().lower()
-        t = f.get("type")
-
-        if not name or t not in ALLOWED_TYPES:
-            continue
-
-        if name in seen:
-            continue
-
-        seen.add(name)
-
-        clean.append({"name": name, "type": t})
-
-    if not clean:
-        return None
-
-    return {"name": schema.get("name", "Dataset"), "fields": clean}
-
-
-# -----------------------------
-# DATA ENGINE (NO AI HERE)
-# -----------------------------
-def gen_value(f):
-
-    name = f["name"]
-    t = f["type"]
-
-    if t == "id":
+    # ID (always stable format)
+    if t == "id" or "id" in name:
         return str(uuid.uuid4())[:10]
 
+    # STRING (context-aware, not random junk)
     if t == "string":
+
         if "name" in name:
             return fake.name()
+
+        if "city" in name:
+            return fake.city()
+
+        if "country" in name:
+            return fake.country()
+
+        if "product" in name:
+            return fake.word().capitalize()
+
         return fake.word().capitalize()
 
+    # EMAIL (always valid format)
     if t == "email":
         return fake.email()
 
+    # PHONE (strict valid format)
     if t == "phone":
         return "+91-" + str(random.randint(6000000000, 9999999999))
 
+    # AMOUNT (realistic financial range)
     if t == "amount":
-        return round(random.uniform(1000, 50000), 2)
+        return round(random.uniform(500, 100000), 2)
 
+    # INT (bounded realistic values)
     if t == "int":
         return random.randint(18, 90)
 
@@ -159,85 +59,70 @@ def gen_value(f):
 
 
 # -----------------------------
-# FALLBACK SCHEMA (IF GPT FAILS)
+# SCHEMA VALIDATION (NO INVALID COLUMNS)
 # -----------------------------
-def fallback(prompt):
+def validate_schema(schema):
 
-    text = prompt.lower()
+    if not schema or "fields" not in schema:
+        return None
 
-    if "login" in text:
-        return {
-            "name": "Login_Data",
-            "fields": [
-                {"name": "username", "type": "string"},
-                {"name": "password", "type": "string"},
-                {"name": "email", "type": "email"},
-                {"name": "device", "type": "string"}
-            ]
-        }
+    clean_fields = []
+    seen = set()
+
+    for f in schema["fields"]:
+
+        name = str(f.get("name", "")).strip().lower()
+        t = f.get("type")
+
+        # reject invalid schema fields
+        if not name or t not in ALLOWED_TYPES:
+            continue
+
+        # prevent duplicate columns
+        if name in seen:
+            continue
+
+        seen.add(name)
+
+        clean_fields.append({
+            "name": name,
+            "type": t
+        })
+
+    if not clean_fields:
+        return None
 
     return {
-        "name": "Generic_Data",
-        "fields": [
-            {"name": "name", "type": "string"},
-            {"name": "email", "type": "email"},
-            {"name": "phone", "type": "phone"}
-        ]
+        "name": schema.get("name", "Dataset"),
+        "fields": clean_fields
     }
 
 
 # -----------------------------
-# GENERATOR
+# DATA GENERATION (NO SCHEMA DRIFT)
 # -----------------------------
-def generate(schema, rows):
+def generate_data(schema, rows):
 
     schema = validate_schema(schema)
 
     if not schema:
-        raise ValueError("Invalid schema")
+        raise ValueError("Invalid schema after validation")
 
-    data = []
+    dataset = []
 
     for _ in range(rows):
 
         row = {}
 
-        for f in schema["fields"]:
-            row[f["name"]] = gen_value(f)
+        for field in schema["fields"]:
+            value = generate_value(field)
 
-        data.append(row)
+            # final safety check
+            if value is None:
+                value = "N/A"
 
-    df = pd.DataFrame(data)
-    df.index = range(1, len(df) + 1)
+            row[field["name"]] = value
 
-    return df
+        dataset.append(row)
 
-
-# -----------------------------
-# UI INPUT
-# -----------------------------
-prompt = st.text_area("💬 Describe dataset")
-rows = st.number_input("📊 Rows", min_value=1, value=10)
-
-
-# -----------------------------
-# GENERATE BUTTON
-# -----------------------------
-if st.button("Generate"):
-
-    schema = gpt_schema(prompt)
-
-    if not schema:
-        schema = fallback(prompt)
-
-    schema = validate_schema(schema)
-
-    df = generate(schema, rows)
-
-    st.success(f"Generated: {schema['name']}")
-
-    st.dataframe(df)
-
-    st.download_button("⬇ CSV", df.to_csv(index=False), "data.csv")
-
-    st.download_button("⬇ JSON", json.dumps(schema, indent=2), "schema.json")
+    return dataset
