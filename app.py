@@ -98,21 +98,18 @@ class Storage:
 storage = Storage(DATA_FILE)
 
 # -----------------------------
-# OPENAI SCHEMA EXTRACTION (CONTROLLED)
+# OPENAI SCHEMA
 # -----------------------------
 def extract_schema(prompt):
 
     system = """
-Return ONLY valid JSON array:
+Return ONLY JSON array:
 
 [
-  {"name": "column", "type": "id|name|email|phone|status|int|float|date|role|text|password"}
+  {"name": "column", "type": "id|name|email|phone|status|int|float|date|role"}
 ]
 
-Rules:
-- no explanation
-- no markdown
-- clean structured output only
+No explanation. No markdown.
 """
 
     res = client.chat.completions.create(
@@ -124,8 +121,6 @@ Rules:
     )
 
     content = res.choices[0].message.content.strip()
-
-    # clean markdown if any
     content = re.sub(r"```json|```", "", content)
 
     try:
@@ -137,23 +132,48 @@ Rules:
                 {"name": "name", "type": "name"}]
 
 # -----------------------------
-# VALIDATION LAYER (IMPORTANT FIX)
+# STRICT SCHEMA FILTER (NO GARBAGE)
+# -----------------------------
+def filter_schema(schema):
+
+    allowed_keywords = [
+        "id","name","email","phone","status","role",
+        "age","salary","balance","amount","transaction",
+        "employee","account","diagnosis","date"
+    ]
+
+    filtered = []
+
+    for f in schema:
+        name = f.get("name", "").lower()
+
+        if any(k in name for k in allowed_keywords):
+            filtered.append(f)
+
+    if not filtered:
+        return [{"name": "id", "type": "id"},
+                {"name": "name", "type": "name"}]
+
+    return filtered
+
+# -----------------------------
+# VALIDATION
 # -----------------------------
 def validate_schema(schema):
 
     clean = []
 
+    allowed = {
+        "id","name","email","phone","status",
+        "int","float","date","role"
+    }
+
     for f in schema:
-        name = str(f.get("name", "")).strip().lower()
-        t = str(f.get("type", "text")).strip().lower()
+        name = str(f.get("name","")).strip().lower()
+        t = str(f.get("type","text")).strip().lower()
 
         if not name:
             continue
-
-        allowed = {
-            "id","name","email","phone","status","int",
-            "float","date","role","text","password"
-        }
 
         if t not in allowed:
             t = "text"
@@ -163,59 +183,52 @@ def validate_schema(schema):
     return clean
 
 # -----------------------------
-# VALUE ENGINE (ACCURATE + DOMAIN SAFE)
+# SAFE EMAIL GENERATOR
+# -----------------------------
+def safe_email():
+    domains = ["gmail.com", "yahoo.com", "hotmail.com", "outlook.com"]
+    return f"{fake.user_name()}@{random.choice(domains)}"
+
+# -----------------------------
+# VALUE ENGINE (CLEAN + STRICT)
 # -----------------------------
 def gen_value(name, t):
 
     n = name.lower()
 
-    # ID
     if "id" in n:
         return str(uuid.uuid4())[:10]
 
-    # EMAIL
     if "email" in n:
-        return fake.email()
+        return safe_email()
 
-    # PHONE
-    if "phone" in n or "mobile" in n:
+    if "phone" in n:
         return "+91" + str(random.randint(6000000000, 9999999999))
 
-    # STATUS
     if "status" in n:
         return random.choice(["ACTIVE","INACTIVE","BLOCKED","PENDING"])
 
-    # ROLE
     if "role" in n:
-        return random.choice(["ADMIN","USER","MANAGER","EXECUTIVE"])
+        return random.choice(["ADMIN","USER","MANAGER"])
 
-    # BANKING LOGIC
     if "txn" in n or "transaction" in n:
         return random.choice(["DEBIT","CREDIT"])
 
     if "balance" in n or "amount" in n:
         return round(random.uniform(100, 500000), 2)
 
-    if "account" in n:
-        return str(random.randint(1000000000, 9999999999))
-
-    # HR LOGIC
     if "salary" in n:
         return round(random.uniform(20000, 300000), 2)
 
     if "employee" in n or "name" in n:
         return fake.name()
 
-    # HEALTHCARE
     if "diagnosis" in n:
-        return random.choice([
-            "Diabetes","Hypertension","Asthma","Flu","Migraine","Infection"
-        ])
+        return random.choice(["Diabetes","Asthma","Flu","Infection"])
 
     if "age" in n:
         return random.randint(1, 90)
 
-    # TYPE BASED
     if t == "int":
         return random.randint(1, 9999)
 
@@ -225,7 +238,7 @@ def gen_value(name, t):
     if t == "date":
         return fake.date_this_year().isoformat()
 
-    return fake.word()
+    return None  # IMPORTANT: no garbage fallback
 
 # -----------------------------
 # GENERATOR
@@ -236,14 +249,15 @@ def generate(schema, rows):
 
     for _ in range(rows):
         row = {}
+
         for f in schema:
-            row[f["name"]] = gen_value(f["name"], f["type"])
+            val = gen_value(f["name"], f["type"])
+            if val is not None:
+                row[f["name"]] = val
+
         data.append(row)
 
-    df = pd.DataFrame(data)
-    df.index = range(1, len(df) + 1)
-
-    return df
+    return pd.DataFrame(data)
 
 # -----------------------------
 # SESSION
@@ -271,10 +285,10 @@ with tab1:
             st.stop()
 
         schema = extract_schema(prompt)
+        schema = filter_schema(schema)
         schema = validate_schema(schema)
 
         df = generate(schema, rows)
-
         st.session_state.df = df
 
         storage.add({
@@ -337,7 +351,7 @@ with tab2:
         preview = pd.DataFrame([
             {f["name"]: gen_value(f["name"], f["type"]) for f in schema}
             for _ in range(3)
-        ]).fillna("")
+        ])
 
         st.dataframe(preview, height=200)
 
@@ -360,7 +374,7 @@ with tab2:
         with col3:
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-                preview.to_excel(writer, index=False, sheet_name="data")
+                preview.to_excel(writer, index=False)
             buffer.seek(0)
 
             st.download_button(
