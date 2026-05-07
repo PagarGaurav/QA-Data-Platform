@@ -13,23 +13,34 @@ import re
 fake = Faker()
 
 # -----------------------------
-# UI
+# UI CONFIG
 # -----------------------------
 st.set_page_config(page_title="AI Data Generator", layout="wide")
 
 st.markdown("""
 <style>
+
 .stApp {
     background-color: #0b0f19;
     color: #e5e7eb;
 }
 
+/* Buttons */
 .stButton > button {
     background: linear-gradient(90deg, #6366f1, #3b82f6);
     color: white;
     border-radius: 10px;
 }
 
+/* Download buttons FIX */
+.stDownloadButton > button {
+    background-color: white !important;
+    color: black !important;
+    font-weight: 600;
+    border-radius: 8px;
+}
+
+/* Cards */
 .card {
     background: #111827;
     padding: 12px;
@@ -47,6 +58,13 @@ st.markdown("""
     font-size: 12px;
     color: #9ca3af;
 }
+
+/* Labels */
+label {
+    color: white !important;
+    font-weight: 500;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -141,7 +159,7 @@ Return ONLY JSON:
 
 
 # -----------------------------
-# VALUE GENERATION
+# VALUE ENGINE
 # -----------------------------
 def gen_value(field):
 
@@ -221,17 +239,13 @@ def generate(fields, rows):
 # -----------------------------
 # VERSIONING
 # -----------------------------
-def get_version(data, name):
-    return f"v{len([x for x in data if x.get('name') == name]) + 1}"
-
-
 def create_record(schema, data_store):
 
     return {
         "id": str(uuid.uuid4())[:8],
         "name": schema.get("name"),
         "domain": schema.get("domain"),
-        "version": get_version(schema, schema.get("name")),
+        "version": f"v{len(data_store)+1}",
         "fields": schema.get("fields"),
         "created_at": str(datetime.now())
     }
@@ -277,25 +291,31 @@ with tab1:
 
     if st.session_state.df is not None:
 
+        # CLEAN TITLE ONLY (NO JSON)
+        st.markdown(f"""
+        <div style="
+            background:#111827;
+            padding:12px;
+            border-radius:10px;
+            margin-bottom:10px;
+            font-weight:600;
+        ">
+        📦 {st.session_state.record["name"]} ({st.session_state.record["version"]})
+        </div>
+        """, unsafe_allow_html=True)
+
         st.dataframe(st.session_state.df)
 
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2)
 
         with col1:
-            st.json({
-                "name": st.session_state.record["name"],
-                "domain": st.session_state.record["domain"],
-                "version": st.session_state.record["version"]
-            })
-
-        with col2:
             st.download_button(
                 "⬇ CSV",
                 st.session_state.df.to_csv(index=False),
                 "data.csv"
             )
 
-        with col3:
+        with col2:
             st.download_button(
                 "⬇ JSON",
                 json.dumps(st.session_state.record, indent=2),
