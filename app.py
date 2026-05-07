@@ -8,7 +8,7 @@ from datetime import datetime
 from openai import OpenAI
 
 # -----------------------------
-# UI (UNCHANGED)
+# UI (NO CHANGE)
 # -----------------------------
 st.set_page_config(page_title="AI Data Generator", layout="wide")
 
@@ -85,7 +85,7 @@ class Storage:
 storage = Storage(DATA_FILE)
 
 # -----------------------------
-# SCHEMA (ONLY STRUCTURE)
+# SCHEMA EXTRACTION (UNCHANGED LOGIC)
 # -----------------------------
 def extract_schema(prompt):
 
@@ -130,81 +130,60 @@ def validate_schema(schema):
     return clean
 
 # -----------------------------
-# 🚀 PRODUCTION FIELD ENGINE (NO FAKER, NO RANDOM TEXT)
+# 🚀 FINAL PRODUCTION DATA ENGINE (IMPORTANT FIX)
+# ONE GPT CALL = FULL DATASET
 # -----------------------------
-def generate_field_value(field_name, field_type, context):
+def generate(fields, rows, prompt):
 
-    prompt = f"""
-Generate ONE realistic value.
+    if not client:
+        st.error("API key required")
+        st.stop()
 
-Field: {field_name}
-Type: {field_type}
-Context: {context}
+    schema = json.dumps(fields, indent=2)
 
-Rules:
-- Must be realistic
-- Must match field meaning
-- No explanation
-- Return ONLY value
+    system = """
+You are a strict synthetic data generator.
+
+Return ONLY valid JSON array of objects.
+
+RULES:
+- Generate exact number of rows requested
+- Use ONLY given schema
+- No extra keys
+- No missing keys
+- All values must be realistic and consistent per row
+- No explanations, no markdown
+"""
+
+    user_prompt = f"""
+User requirement:
+{prompt}
+
+Schema:
+{schema}
+
+Rows: {rows}
 """
 
     res = client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.3
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_prompt}
+        ],
+        temperature=0.4
     )
 
-    return res.choices[0].message.content.strip()
+    content = res.choices[0].message.content
 
-# -----------------------------
-# 🚀 ENTERPRISE DATA GENERATION ENGINE
-# -----------------------------
-def generate(fields, rows, prompt):
-
-    data = []
-
-    for _ in range(rows):
-
-        row = {}
-
-        # stable identity context
-        context = f"Dataset: {prompt}"
-
-        for f in fields:
-
-            name = f["name"]
-            t = f["type"]
-
-            # deterministic core fields
-            if t == "name":
-                row[name] = generate_field_value(name, "name", context)
-
-            elif t == "email":
-                row[name] = generate_field_value(name, "email", context)
-
-            elif t == "phone":
-                row[name] = generate_field_value(name, "phone", context)
-
-            elif t == "address":
-                row[name] = generate_field_value(name, "address", context)
-
-            elif t == "id":
-                row[name] = str(uuid.uuid4())
-
-            elif t == "number":
-                val = generate_field_value(name, "number", context)
-                try:
-                    row[name] = int(''.join(filter(str.isdigit, val)))
-                except:
-                    row[name] = 0
-
-            elif t == "date":
-                row[name] = generate_field_value(name, "date", context)
-
-            else:
-                row[name] = generate_field_value(name, "text", context)
-
-        data.append(row)
+    try:
+        start = content.find("[")
+        end = content.rfind("]") + 1
+        data = json.loads(content[start:end])
+    except:
+        st.error("Failed to generate valid dataset")
+        st.code(content)
+        st.stop()
 
     df = pd.DataFrame(data)
     df.index = range(1, len(df) + 1)
@@ -231,6 +210,8 @@ with tab1:
     rows = st.number_input("📊 Rows", min_value=1, value=10)
 
     if st.button("Generate"):
+
+        st.session_state["last_prompt"] = prompt
 
         schema = extract_schema(prompt)
         schema = validate_schema(schema)
@@ -267,7 +248,7 @@ with tab1:
             st.download_button("Excel", buffer, "data.xlsx")
 
 # =============================
-# HISTORY
+# HISTORY (UNCHANGED)
 # =============================
 with tab2:
 
@@ -284,5 +265,16 @@ with tab2:
             <h4 style="color:white;">📦 {item.get('name')}</h4>
         </div>
         """, unsafe_allow_html=True)
+
+        fields = item.get("fields", [])
+
+        preview = pd.DataFrame([
+            {f["name"]: "sample" for f in fields}
+            for _ in range(3)
+        ])
+
+        preview.index = range(1, len(preview) + 1)
+
+        st.dataframe(preview)
 
         st.markdown("---")
