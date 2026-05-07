@@ -89,7 +89,7 @@ class Storage:
 storage = Storage(DATA_FILE)
 
 # -----------------------------
-# SCHEMA EXTRACTION
+# SCHEMA EXTRACTION (LLM ONLY FOR STRUCTURE)
 # -----------------------------
 def extract_schema(prompt):
 
@@ -100,12 +100,13 @@ def extract_schema(prompt):
     system = """
 Return ONLY JSON array:
 [
-  {"name": "column_name", "type": "name|email|phone|id|address|number|date|text"}
+  {"name": "column", "type": "name|email|phone|id|address|number|date|text"}
 ]
 
 Rules:
-- No assumptions about domain
 - Only infer structure
+- No explanations
+- No assumptions beyond prompt
 """
 
     res = client.chat.completions.create(
@@ -113,7 +114,8 @@ Rules:
         messages=[
             {"role": "system", "content": system},
             {"role": "user", "content": prompt}
-        ]
+        ],
+        temperature=0.2
     )
 
     content = res.choices[0].message.content
@@ -131,7 +133,7 @@ Rules:
 # -----------------------------
 def validate_schema(schema):
 
-    allowed_types = {"name","email","phone","id","address","number","date","text"}
+    allowed = {"name","email","phone","id","address","number","date","text"}
 
     clean = []
 
@@ -139,7 +141,7 @@ def validate_schema(schema):
         name = f.get("name","col").strip().lower()
         t = f.get("type","text").strip().lower()
 
-        if t not in allowed_types:
+        if t not in allowed:
             t = "text"
 
         clean.append({"name": name, "type": t})
@@ -147,60 +149,93 @@ def validate_schema(schema):
     return clean
 
 # -----------------------------
-# 🔥 FIXED UNIVERSAL GENERATION ENGINE
+# ENTERPRISE RULE ENGINE
+# -----------------------------
+def enrich_schema(schema):
+
+    enriched = []
+
+    for f in schema:
+        name = f["name"]
+        t = f["type"]
+
+        rule = None
+
+        if "email" in name:
+            rule = "derive_name_email"
+
+        elif "age" in name:
+            rule = "range_18_65"
+
+        elif "salary" in name:
+            rule = "range_salary"
+
+        elif "id" in name:
+            rule = "unique"
+
+        enriched.append({
+            "name": name,
+            "type": t,
+            "rule": rule
+        })
+
+    return enriched
+
+# -----------------------------
+# 🚀 ENTERPRISE DATA ENGINE (NO LLM ROW GENERATION)
 # -----------------------------
 def generate(fields, rows):
 
-    if not client:
-        st.error("API key required for generation")
-        st.stop()
+    data = []
 
-    system = f"""
-You are a strict dataset generator.
+    for _ in range(rows):
 
-Return ONLY valid JSON array of {rows} objects.
+        row = {}
 
-RULES:
-- EXACT columns only: {[f['name'] for f in fields]}
-- Follow types strictly:
-{json.dumps(fields)}
+        person = fake.name()
+        first = person.split()[0].lower()
 
-STRICT:
-- No extra columns
-- No missing values
-- No nulls
-- Fully realistic data based on prompt
-"""
-
-    prompt = st.session_state.get("last_prompt","")
-
-    res = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0.7
-    )
-
-    content = res.choices[0].message.content
-
-    try:
-        data = json.loads(content)
-    except:
-        st.error("Invalid JSON from model")
-        st.stop()
-
-    # enforce schema safety
-    clean_data = []
-
-    for row in data:
-        clean_row = {}
         for f in fields:
-            clean_row[f["name"]] = row.get(f["name"], "")
-        clean_data.append(clean_row)
 
-    df = pd.DataFrame(clean_data)
+            name = f["name"]
+            t = f["type"]
+            rule = f.get("rule")
+
+            if t == "name":
+                row[name] = person
+
+            elif t == "email":
+                row[name] = f"{first}{random.randint(10,999)}@gmail.com"
+
+            elif t == "phone":
+                row[name] = f"+91-{random.randint(70000,99999)}-{random.randint(10000,99999)}"
+
+            elif t == "address":
+                row[name] = fake.city() + ", " + fake.country()
+
+            elif t == "id":
+                row[name] = str(uuid.uuid4())
+
+            elif t == "number":
+
+                if rule == "range_18_65":
+                    row[name] = random.randint(18, 65)
+
+                elif rule == "range_salary":
+                    row[name] = random.randint(30000, 250000)
+
+                else:
+                    row[name] = random.randint(1, 9999)
+
+            elif t == "date":
+                row[name] = fake.date_between("-3y", "today").isoformat()
+
+            else:
+                row[name] = fake.sentence(nb_words=5)
+
+        data.append(row)
+
+    df = pd.DataFrame(data)
     df.index = range(1, len(df) + 1)
 
     return df
@@ -226,10 +261,11 @@ with tab1:
 
     if st.button("Generate"):
 
-        st.session_state["last_prompt"] = prompt  # 🔥 IMPORTANT FIX
+        st.session_state["last_prompt"] = prompt
 
         schema = extract_schema(prompt)
         schema = validate_schema(schema)
+        schema = enrich_schema(schema)
 
         df = generate(schema, rows)
         st.session_state.df = df
@@ -241,7 +277,7 @@ with tab1:
             "created_at": str(datetime.now())
         })
 
-        st.success("Dataset generated")
+        st.success("Dataset generated successfully")
 
     if st.session_state.df is not None:
 
