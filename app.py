@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 from faker import Faker
 import random
 import json
@@ -12,7 +11,7 @@ import io
 fake = Faker()
 
 # -----------------------------
-# UI (UNCHANGED + FIX SIDEBAR BLACK)
+# UI (UNCHANGED)
 # -----------------------------
 st.set_page_config(page_title="AI Data Generator", layout="wide")
 
@@ -23,7 +22,6 @@ st.markdown("""
     color: #e5e7eb;
 }
 
-/* BUTTONS */
 .stButton > button {
     background: linear-gradient(90deg, #6366f1, #3b82f6);
     color: white;
@@ -37,20 +35,28 @@ st.markdown("""
     border-radius: 8px;
 }
 
-/* LABELS */
 label {
     color: white !important;
 }
 
-/* ✅ FIX: SIDEBAR MUST STAY BLACK */
 section[data-testid="stSidebar"] {
     background-color: #0b0f19 !important;
 }
-
 </style>
 """, unsafe_allow_html=True)
 
 st.title("🧠 AI Data Generator")
+
+# -----------------------------
+# API KEY (RESTORED EXACT FLOW)
+# -----------------------------
+api_key = st.sidebar.text_input("🔑 OpenAI API Key", type="password")
+
+# only create client if key exists (same as your original logic)
+client = None
+if api_key:
+    from openai import OpenAI
+    client = OpenAI(api_key=api_key)
 
 # -----------------------------
 # STORAGE
@@ -95,50 +101,40 @@ class Storage:
 storage = Storage(DATA_FILE)
 
 # -----------------------------
-# SAFE EMAIL (FIX VALIDATION)
+# SAFE EMAIL (FIXED)
 # -----------------------------
 def safe_email():
-    username = fake.user_name().replace(".", "_")
-    domain = random.choice(["gmail.com", "yahoo.com", "outlook.com"])
-    return f"{username}@{domain}"
+    return f"{fake.user_name()}@gmail.com"
 
 # -----------------------------
-# VALUE ENGINE (VALIDATION RESTORED)
+# VALUE ENGINE (FIXED ONLY)
 # -----------------------------
 def gen_value(field):
 
     name = field["name"].lower()
     t = field["type"]
 
-    # ID
     if "id" in name:
         return str(uuid.uuid4())[:10]
 
-    # NAME
     if "name" in name:
         return fake.name()
 
-    # EMAIL (VALID FIX)
     if "email" in name:
         return safe_email()
 
-    # PHONE
     if "phone" in name:
         return "+91-" + str(random.randint(6000000000, 9999999999))
 
-    # AGE
     if "age" in name:
         return random.randint(18, 80)
 
-    # STATUS
     if "status" in name:
         return random.choice(["ACTIVE", "INACTIVE", "PENDING", "SUCCESS"])
 
-    # AMOUNT
     if t == "amount":
         return round(random.uniform(100, 50000), 2)
 
-    # INT
     if t == "int":
         return random.randint(1, 9999)
 
@@ -166,6 +162,9 @@ def generate(fields, rows):
 if "df" not in st.session_state:
     st.session_state.df = None
 
+if "record" not in st.session_state:
+    st.session_state.record = None
+
 # -----------------------------
 # TABS
 # -----------------------------
@@ -181,7 +180,7 @@ with tab1:
 
     if st.button("Generate"):
 
-        # SIMPLE SMART SCHEMA (UNCHANGED LOGIC)
+        # (keeping your original smart schema logic)
         text = prompt.lower()
 
         fields = [{"name": "id", "type": "id"}]
@@ -205,12 +204,14 @@ with tab1:
         df = generate(fields, rows)
         st.session_state.df = df
 
-        storage.add({
+        st.session_state.record = {
             "id": str(uuid.uuid4())[:8],
             "name": prompt[:40],
             "fields": fields,
             "created_at": str(datetime.now())
-        })
+        }
+
+        storage.add(st.session_state.record)
 
         st.success("Dataset generated")
 
@@ -220,9 +221,6 @@ with tab1:
 
         col1, col2, col3 = st.columns(3)
 
-        # -----------------------------
-        # CSV
-        # -----------------------------
         with col1:
             st.download_button(
                 "⬇ CSV",
@@ -230,9 +228,6 @@ with tab1:
                 file_name="data.csv"
             )
 
-        # -----------------------------
-        # JSON
-        # -----------------------------
         with col2:
             st.download_button(
                 "⬇ JSON",
@@ -241,12 +236,12 @@ with tab1:
             )
 
         # -----------------------------
-        # EXCEL (RESTORED)
+        # EXCEL RESTORED
         # -----------------------------
         with col3:
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-                st.session_state.df.to_excel(writer, index=False, sheet_name="data")
+                st.session_state.df.to_excel(writer, index=False)
             buffer.seek(0)
 
             st.download_button(
@@ -256,7 +251,7 @@ with tab1:
             )
 
 # =============================
-# HISTORY (UNCHANGED LOGIC)
+# HISTORY (UNCHANGED)
 # =============================
 with tab2:
 
@@ -276,11 +271,7 @@ with tab2:
     for item in reversed(data):
 
         st.markdown(f"""
-        <div style="
-            background:#111827;
-            padding:12px;
-            border-radius:12px;
-            margin-bottom:10px;">
+        <div style="background:#111827;padding:12px;border-radius:12px;margin-bottom:10px;">
             <h4 style="color:white;">📦 {item.get('name')}</h4>
         </div>
         """, unsafe_allow_html=True)
@@ -313,7 +304,7 @@ with tab2:
         with col3:
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-                preview.to_excel(writer, index=False, sheet_name="data")
+                preview.to_excel(writer, index=False)
             buffer.seek(0)
 
             st.download_button(
