@@ -46,25 +46,6 @@ st.markdown("""
     font-weight: 600;
 }
 
-/* Cards */
-.card {
-    background: #111827;
-    padding: 12px;
-    border-radius: 12px;
-    margin-bottom: 12px;
-    border: 1px solid #1f2937;
-}
-
-.title {
-    font-size: 16px;
-    font-weight: 600;
-}
-
-.meta {
-    font-size: 12px;
-    color: #9ca3af;
-}
-
 label {
     color: white !important;
     font-weight: 500;
@@ -223,7 +204,7 @@ def auto_fix(field, value):
 
 
 # -----------------------------
-# GENERATOR
+# GENERATOR (ROWS START FROM 1)
 # -----------------------------
 def generate(fields, rows):
 
@@ -238,7 +219,12 @@ def generate(fields, rows):
 
         data.append(row)
 
-    return pd.DataFrame(data)
+    df = pd.DataFrame(data)
+
+    # ROW INDEX START FROM 1
+    df.index = range(1, len(df) + 1)
+
+    return df
 
 
 # -----------------------------
@@ -334,7 +320,7 @@ with tab1:
 
 
 # =============================
-# 📂 HISTORY (SEARCH + FILTER)
+# 📂 HISTORY (REAL DATA PREVIEW)
 # =============================
 with tab2:
 
@@ -352,54 +338,32 @@ with tab2:
         st.info("No history found")
         st.stop()
 
-    # -----------------------------
-    # SEARCH + FILTER
-    # -----------------------------
-    col1, col2 = st.columns(2)
+    for item in reversed(data):
 
-    with col1:
-        search = st.text_input("🔍 Search dataset (name / id)")
+        st.markdown(f"### 📦 {item.get('name')} ({item.get('version')})")
 
-    with col2:
-        domains = list(set([d.get("domain") for d in data]))
-        selected_domain = st.selectbox("🎯 Filter by domain", ["All"] + domains)
+        # REAL DATA PREVIEW (NOT SCHEMA)
+        sample_fields = item.get("fields", [])
 
-    filtered = data
+        preview_df = pd.DataFrame([
+            {
+                f["name"]: gen_value(f)
+                for f in sample_fields
+            }
+            for _ in range(3)
+        ])
 
-    if search:
-        filtered = [
-            d for d in filtered
-            if search.lower() in d.get("name", "").lower()
-            or search.lower() in d.get("id", "").lower()
-        ]
+        # ROWS START FROM 1
+        preview_df.index = range(1, len(preview_df) + 1)
 
-    if selected_domain != "All":
-        filtered = [
-            d for d in filtered
-            if d.get("domain") == selected_domain
-        ]
-
-    # -----------------------------
-    # HISTORY CARDS
-    # -----------------------------
-    for item in reversed(filtered):
-
-        fields_preview = ", ".join([f["name"] for f in item.get("fields", [])])
-
-        st.markdown(f"""
-<div class="card">
-    <div class="title">📦 {item.get('name')} ({item.get('version')})</div>
-    <div class="meta">Domain: {item.get('domain')} | ID: {item.get('id')}</div>
-    <div class="meta">Fields: {fields_preview}</div>
-</div>
-""", unsafe_allow_html=True)
+        st.dataframe(preview_df)
 
         col1, col2 = st.columns(2)
 
         with col1:
             st.download_button(
                 "⬇ CSV",
-                pd.DataFrame([item]).to_csv(index=False),
+                preview_df.to_csv(index=False),
                 file_name=f"{item['id']}.csv"
             )
 
@@ -413,3 +377,5 @@ with tab2:
         if st.button("🗑 Delete", key=item["id"]):
             storage.delete(item["id"])
             st.rerun()
+
+        st.markdown("---")
