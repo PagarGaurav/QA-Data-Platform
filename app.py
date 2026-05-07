@@ -13,7 +13,7 @@ import re
 fake = Faker()
 
 # -----------------------------
-# UI (UNCHANGED - DO NOT MODIFY)
+# UI (UNCHANGED)
 # -----------------------------
 st.set_page_config(page_title="AI Data Generator", layout="wide")
 
@@ -50,7 +50,7 @@ section[data-testid="stSidebar"] {
 st.title("🧠 AI Data Generator")
 
 # -----------------------------
-# API
+# API KEY
 # -----------------------------
 api_key = st.sidebar.text_input("🔑 OpenAI API Key", type="password")
 client = OpenAI(api_key=api_key) if api_key else None
@@ -98,9 +98,8 @@ class Storage:
 storage = Storage(DATA_FILE)
 
 # -----------------------------
-# ENTERPRISE DOMAIN ENGINE
+# DOMAIN MODELS (ENTERPRISE)
 # -----------------------------
-
 LOGIN_FIELDS = {
     "email": "email",
     "password": "string",
@@ -140,7 +139,7 @@ def detect_domain(prompt):
     return "generic"
 
 # -----------------------------
-# SCHEMA ENGINE (ENTERPRISE)
+# SCHEMA ENGINE (FIXED SYNTAX ERROR HERE)
 # -----------------------------
 def extract_schema(prompt):
 
@@ -148,16 +147,20 @@ def extract_schema(prompt):
 
     if domain == "login":
         schema = [{"name": k, "type": v} for k, v in LOGIN_FIELDS.items()]
+
     elif domain == "bank":
         schema = [{"name": k, "type": v} for k, v in BANK_FIELDS.items()]
+
     elif domain == "medical":
-        schema = [{"name": k, "type": v} for k, v in MEDICAL_FIELDS.items()}
+        # ✅ FIXED SYNTAX ERROR (was } instead of ])
+        schema = [{"name": k, "type": v} for k, v in MEDICAL_FIELDS.items()]
+
     else:
 
         system = """
 Return ONLY JSON schema array.
-No explanation.
 Fields: name, type
+No explanation.
 """
 
         res = client.chat.completions.create(
@@ -169,6 +172,7 @@ Fields: name, type
         )
 
         raw = res.choices[0].message.content.strip()
+
         raw = re.sub(r"```json", "", raw)
         raw = re.sub(r"```", "", raw).strip()
 
@@ -177,13 +181,15 @@ Fields: name, type
             end = raw.rindex("]") + 1
             schema = json.loads(raw[start:end])
         except:
-            schema = [{"name": "id", "type": "id"},
-                      {"name": "name", "type": "string"}]
+            schema = [
+                {"name": "id", "type": "id"},
+                {"name": "name", "type": "string"}
+            ]
 
     return schema
 
 # -----------------------------
-# ENTERPRISE VALUE ENGINE
+# VALUE ENGINE (NO N/A EVER)
 # -----------------------------
 def gen_value(field):
 
@@ -229,13 +235,13 @@ def gen_value(field):
     return fake.word()
 
 # -----------------------------
-# 100K ENTERPRISE GENERATOR
+# 100K GENERATOR (SAFE)
 # -----------------------------
 MAX_CHUNK = 5000
 
 def generate_data(schema, rows, prompt):
 
-    all_data = []
+    data = []
     remaining = rows
 
     while remaining > 0:
@@ -246,11 +252,11 @@ def generate_data(schema, rows, prompt):
             row = {}
             for f in schema:
                 row[f["name"]] = gen_value(f)
-            all_data.append(row)
+            data.append(row)
 
         remaining -= batch
 
-    return pd.DataFrame(all_data)
+    return pd.DataFrame(data)
 
 # -----------------------------
 # SESSION
