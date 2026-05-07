@@ -28,30 +28,45 @@ st.markdown("""
     color: white;
     border-radius: 10px;
 }
+
+.card {
+    background: #111827;
+    padding: 15px;
+    border-radius: 12px;
+    margin-bottom: 15px;
+    border: 1px solid #1f2937;
+}
+
+.title {
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.meta {
+    font-size: 13px;
+    color: #9ca3af;
+}
+
+.white-text {
+    color: white;
+}
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🧠 AI Data Generator (Runtime API Mode)")
+st.title("🧠 AI Data Generator")
 
 
 # -----------------------------
-# 🔑 SIDEBAR API KEY (RUNTIME)
+# 🔑 API KEY
 # -----------------------------
-st.sidebar.title("🔑 OpenAI Settings")
-
-api_key = st.sidebar.text_input(
-    "Enter OpenAI API Key",
-    type="password"
-)
+api_key = st.sidebar.text_input("🔑 OpenAI API Key", type="password")
 
 if api_key:
     client = OpenAI(api_key=api_key)
-else:
-    st.sidebar.warning("⚠️ Enter API key to enable AI generation")
 
 
 # -----------------------------
-# 🛡 STORAGE
+# STORAGE
 # -----------------------------
 DATA_FILE = "storage.json"
 
@@ -65,8 +80,7 @@ class Storage:
     def _read(self):
         try:
             with open(self.file, "r") as f:
-                data = json.load(f)
-                return data if isinstance(data, list) else []
+                return json.load(f)
         except:
             return []
 
@@ -94,13 +108,9 @@ storage = Storage(DATA_FILE)
 
 
 # -----------------------------
-# 🧠 OPENAI SCHEMA ENGINE
+# AI SCHEMA
 # -----------------------------
 def ai_schema(prompt):
-
-    if not api_key:
-        st.error("API Key missing")
-        st.stop()
 
     res = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -108,14 +118,12 @@ def ai_schema(prompt):
             {
                 "role": "system",
                 "content": """
-Return ONLY JSON schema:
+Return JSON:
 {
   "domain": "...",
-  "fields": [
-    {"name": "...", "type": "string|int|amount|email"}
-  ]
+  "name": "...",
+  "fields": [{"name":"...","type":"string|int|amount|email"}]
 }
-No explanation.
 """
             },
             {"role": "user", "content": prompt}
@@ -127,58 +135,54 @@ No explanation.
 
 
 # -----------------------------
-# 🧠 VALUE ENGINE
+# VALUE ENGINE
 # -----------------------------
 def gen_value(t):
 
     if t == "int":
         return random.randint(1000, 99999)
-
     if t == "string":
         return fake.word()
-
     if t == "amount":
         return round(np.random.uniform(10, 5000), 2)
-
     if t == "email":
         return fake.email()
 
     return fake.word()
 
 
-def generate(fields):
+def generate(fields, rows):
     return pd.DataFrame([
         {f["name"]: gen_value(f["type"]) for f in fields}
-        for _ in range(10)
+        for _ in range(rows)
     ])
 
 
 # -----------------------------
-# 🧠 VERSIONING
+# VERSIONING
 # -----------------------------
-def get_version(data, prompt):
-    return f"v{len([x for x in data if x.get('prompt') == prompt]) + 1}"
+def get_version(data, name):
+    return f"v{len([x for x in data if x.get('name') == name]) + 1}"
 
 
-def create_record(prompt, domain, fields, data_store):
+def create_record(prompt, schema, data_store):
 
     return {
         "id": str(uuid.uuid4())[:8],
+        "name": schema.get("name", "Dataset"),
         "prompt": prompt,
-        "domain": domain,
-        "version": get_version(data_store, prompt),
-        "rows": 10,
-        "cols": [f["name"] for f in fields],
+        "domain": schema["domain"],
+        "version": get_version(data_store, schema.get("name", "Dataset")),
+        "fields": schema["fields"],
         "created_at": str(datetime.now())
     }
 
 
 # -----------------------------
-# SESSION STATE
+# SESSION
 # -----------------------------
 if "df" not in st.session_state:
     st.session_state.df = None
-
 if "record" not in st.session_state:
     st.session_state.record = None
 
@@ -196,75 +200,65 @@ with tab1:
 
     prompt = st.text_area("💬 Describe dataset")
 
-    if st.button("Generate with AI"):
+    rows = st.number_input("📊 Rows", min_value=1, value=10)
+
+    if st.button("Generate"):
 
         if not api_key:
-            st.error("Please enter API key in sidebar")
+            st.error("Enter API key")
             st.stop()
 
         schema = ai_schema(prompt)
 
-        domain = schema["domain"]
-        fields = schema["fields"]
-
-        df = generate(fields)
+        df = generate(schema["fields"], rows)
 
         st.session_state.df = df
         st.session_state.record = create_record(
-            prompt, domain, fields, storage.get_all()
+            prompt, schema, storage.get_all()
         )
 
         storage.add(st.session_state.record)
 
-        st.success(f"{domain} dataset generated via AI")
+        st.success(f"{schema['name']} generated")
 
 
-    # -----------------------------
-    # OUTPUT
-    # -----------------------------
     if st.session_state.df is not None:
 
         st.markdown("### 📊 Generated Dataset")
-
         st.dataframe(st.session_state.df)
 
         col1, col2, col3 = st.columns(3)
 
         with col1:
-            if st.button("👁 View Schema"):
-                st.json(st.session_state.record)
+            st.json(st.session_state.record)
 
         with col2:
             st.download_button(
                 "⬇ CSV",
                 st.session_state.df.to_csv(index=False),
-                file_name="dataset.csv"
+                "data.csv"
             )
 
         with col3:
             st.download_button(
                 "⬇ JSON",
                 json.dumps(st.session_state.record, indent=2),
-                file_name="dataset.json"
+                "data.json"
             )
 
-        if st.button("🗑 Delete Last Dataset"):
-
+        if st.button("🗑 Delete Last"):
             storage.delete(st.session_state.record["id"])
-
             st.session_state.df = None
             st.session_state.record = None
-
-            st.warning("Deleted last dataset")
             st.rerun()
 
 
 # =============================
-# 📂 HISTORY
+# 📂 HISTORY (CARD UI)
 # =============================
 with tab2:
 
-    st.subheader("📂 History")
+    st.subheader("📂 Generator History")
 
     data = storage.get_all()
 
@@ -272,44 +266,35 @@ with tab2:
         st.info("No history found")
         st.stop()
 
-    search = st.text_input("🔎 Search")
-    filter_domain = st.selectbox(
-        "🎛️ Filter",
-        ["ALL", "SAP", "MEDICAL", "BANKING", "IT", "LOGIN", "UNKNOWN"]
-    )
+    for item in reversed(data):
 
-    def match(x):
+        st.markdown(f"""
+<div class="card">
+    <div class="title">📦 {item.get('name')} ({item.get('version')})</div>
+    <div class="meta">Domain: {item.get('domain')} | ID: {item.get('id')}</div>
 
-        if search and search.lower() not in x.get("prompt", "").lower():
-            return False
+    <p class="white-text">{item.get('prompt')}</p>
 
-        if filter_domain != "ALL" and x.get("domain") != filter_domain:
-            return False
+</div>
+""", unsafe_allow_html=True)
 
-        return True
+        col1, col2, col3 = st.columns(3)
 
+        with col1:
+            st.download_button(
+                "⬇ CSV",
+                pd.DataFrame([item]).to_csv(index=False),
+                file_name=f"{item['id']}.csv"
+            )
 
-    filtered = [x for x in data if match(x)]
+        with col2:
+            st.download_button(
+                "⬇ JSON",
+                json.dumps(item, indent=2),
+                file_name=f"{item['id']}.json"
+            )
 
-    for item in reversed(filtered):
-
-        with st.expander(
-            f"🧾 {item.get('id')} | {item.get('domain')} | {item.get('version')}"
-        ):
-
-            st.write("Prompt:", item.get("prompt"))
-            st.write("Domain:", item.get("domain"))
-            st.write("Version:", item.get("version"))
-            st.write("Columns:", item.get("cols"))
-            st.write("Time:", item.get("created_at"))
-
-            col1, col2 = st.columns(2)
-
-            with col1:
-                if st.button("👁 Preview", key="p"+item["id"]):
-                    st.json(item)
-
-            with col2:
-                if st.button("🗑 Delete", key="d"+item["id"]):
-                    storage.delete(item["id"])
-                    st.rerun()
+        with col3:
+            if st.button("🗑 Delete", key=item["id"]):
+                storage.delete(item["id"])
+                st.rerun()
