@@ -30,7 +30,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🧠 AI Data Generator (SaaS Mode)")
+st.title("🧠 AI Data Generator")
 
 
 # -----------------------------
@@ -69,9 +69,6 @@ class Storage:
         data = [x for x in data if x.get("id") != item_id]
         self._write(data)
 
-    def get_all(self):
-        return self._read()
-
 
 storage = Storage(DATA_FILE)
 
@@ -85,7 +82,7 @@ def detect_domain(prompt):
     if any(x in t for x in ["sap", "vendor", "material"]):
         return "SAP"
 
-    if any(x in t for x in ["medical", "patient", "doctor"]):
+    if any(x in t for x in ["medical", "patient"]):
         return "MEDICAL"
 
     if any(x in t for x in ["bank", "account"]):
@@ -101,7 +98,7 @@ def detect_domain(prompt):
 
 
 # -----------------------------
-# 🧱 SCHEMA MAP
+# 🧱 SCHEMA
 # -----------------------------
 def schema_map(domain):
 
@@ -190,114 +187,91 @@ def create_record(prompt, schema, domain):
 
 
 # -----------------------------
-# TABS
+# 🧠 SESSION STATE
 # -----------------------------
-tab1, tab2 = st.tabs(["🚀 Generate", "📂 History"])
+if "df" not in st.session_state:
+    st.session_state.df = None
+
+if "record" not in st.session_state:
+    st.session_state.record = None
 
 
-# =============================
-# 🚀 GENERATE TAB
-# =============================
-with tab1:
+# -----------------------------
+# 🚀 GENERATE PAGE (ONLY PAGE YOU CARE ABOUT)
+# -----------------------------
+prompt = st.text_area("💬 Describe dataset")
 
-    prompt = st.text_area("💬 Describe dataset")
+if st.button("Generate"):
 
-    if st.button("Generate"):
+    domain = detect_domain(prompt)
+    schema = schema_map(domain)
 
-        domain = detect_domain(prompt)
-        schema = schema_map(domain)
-
-        if not schema:
-            st.error("⚠️ Cannot understand request safely")
-            st.stop()
-
-        df = generate(schema)
-
-        st.success(f"{domain} dataset generated")
-
-        st.dataframe(df)
-
-        # DOWNLOAD CSV
-        st.download_button(
-            "⬇ Download CSV",
-            df.to_csv(index=False),
-            "dataset.csv"
-        )
-
-        storage.add(create_record(prompt, schema, domain))
-
-
-# =============================
-# 📂 HISTORY TAB (FULL FEATURES)
-# =============================
-with tab2:
-
-    st.subheader("📂 History")
-
-    data = storage.get_all()
-
-    if not data:
-        st.info("No history found")
+    if not schema:
+        st.error("⚠️ Cannot understand request safely")
         st.stop()
 
-    search = st.text_input("🔎 Search")
-    filter_domain = st.selectbox(
-        "🎛️ Filter",
-        ["ALL", "SAP", "MEDICAL", "BANKING", "IT", "LOGIN", "UNKNOWN"]
-    )
+    df = generate(schema)
+    record = create_record(prompt, schema, domain)
 
-    def match(x):
+    st.session_state.df = df
+    st.session_state.record = record
 
-        if search and search.lower() not in x.get("prompt", "").lower():
-            return False
+    storage.add(record)
 
-        if filter_domain != "ALL" and x.get("domain") != filter_domain:
-            return False
-
-        return True
+    st.success(f"{domain} dataset generated")
 
 
-    filtered = [x for x in data if match(x)]
+# -----------------------------
+# 📊 RESULT PANEL (FIRST PAGE UX)
+# -----------------------------
+if st.session_state.df is not None:
 
-    st.markdown(f"### 📊 Showing {len(filtered)} records")
+    st.markdown("### 📊 Generated Dataset")
 
-    for item in reversed(filtered):
+    st.dataframe(st.session_state.df, use_container_width=True)
 
-        with st.expander(f"🧾 {item.get('id')} | {item.get('domain')}"):
+    col1, col2, col3 = st.columns(3)
 
-            st.write("Prompt:", item.get("prompt"))
-            st.write("Domain:", item.get("domain"))
-            st.write("Columns:", item.get("cols"))
-            st.write("Rows:", item.get("rows"))
-            st.write("Time:", item.get("created_at"))
+    # VIEW
+    with col1:
+        if st.button("👁 View Schema"):
+            st.json(st.session_state.record)
 
-            col1, col2, col3 = st.columns(3)
+    # CSV DOWNLOAD
+    with col2:
+        st.download_button(
+            "⬇ CSV",
+            st.session_state.df.to_csv(index=False),
+            file_name="dataset.csv"
+        )
 
-            # 👁 PREVIEW
-            with col1:
-                if st.button("👁 Preview", key="p"+item["id"]):
-                    st.write("📊 Schema Preview")
-                    st.json(item.get("cols"))
+    # JSON DOWNLOAD
+    with col3:
+        st.download_button(
+            "⬇ JSON",
+            json.dumps(st.session_state.record, indent=2),
+            file_name="dataset.json"
+        )
 
-            # ⬇ CSV DOWNLOAD
-            with col2:
-                st.download_button(
-                    "⬇ CSV",
-                    pd.DataFrame([item]).to_csv(index=False),
-                    file_name=f"{item['id']}.csv",
-                    key="csv"+item["id"]
-                )
+    # DELETE LAST
+    if st.button("🗑 Delete Last Dataset"):
 
-            # 🗑 DELETE
-            with col3:
-                if st.button("🗑 Delete", key="d"+item["id"]):
-                    storage.delete(item["id"])
-                    st.rerun()
+        storage.delete(st.session_state.record["id"])
 
-            # ⬇ JSON DOWNLOAD
-            st.download_button(
-                "⬇ JSON",
-                json.dumps(item, indent=2),
-                file_name=f"{item['id']}.json",
-                key="json"+item["id"]
-            )
+        st.session_state.df = None
+        st.session_state.record = None
+
+        st.warning("Deleted last dataset")
+        st.rerun()
+
+
+# -----------------------------
+# (OPTIONAL LIGHT HISTORY VIEW - NO UI COMPLEXITY)
+# -----------------------------
+with st.expander("📂 History (Simple View)"):
+
+    try:
+        data = json.load(open(DATA_FILE))
+        st.write(data[-5:])
+    except:
+        st.write("No history")
