@@ -11,56 +11,44 @@ from datetime import datetime
 fake = Faker()
 
 # -----------------------------
-# 🎨 NETFLIX STYLE UI CONFIG
+# 🎨 UI (MODERN DARK SAAS)
 # -----------------------------
 st.set_page_config(page_title="AI Data Generator", layout="wide")
 
 st.markdown("""
 <style>
-
 .stApp {
     background-color: #0b0f19;
     color: #e5e7eb;
 }
 
-/* Buttons */
 .stButton > button {
     background: linear-gradient(90deg, #6366f1, #3b82f6);
     color: white;
     border-radius: 10px;
     border: none;
-    padding: 0.4rem 1rem;
+    padding: 0.5rem 1rem;
 }
 
-/* Tabs */
-.stTabs [data-baseweb="tab"] {
+[data-testid="stMetric"] {
     background-color: #111827;
-    border-radius: 8px;
-}
-
-/* Card hover effect */
-div[data-testid="stVerticalBlock"] > div {
-    transition: transform 0.2s ease;
-}
-
-div[data-testid="stVerticalBlock"] > div:hover {
-    transform: scale(1.02);
+    padding: 10px;
+    border-radius: 10px;
 }
 
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🎬 AI Data Generator")
+st.title("🎬 AI Data Generator (Enterprise Safe)")
 
 
 # -----------------------------
-# 🛡 SAFE STORAGE (PRODUCTION SAFE)
+# 🛡 SAFE STORAGE
 # -----------------------------
 DATA_FILE = "storage.json"
 
 
 class SafeStorage:
-
     def __init__(self, file):
         self.file = file
         self.ensure()
@@ -72,8 +60,7 @@ class SafeStorage:
     def _read(self):
         try:
             with open(self.file, "r") as f:
-                data = json.load(f)
-                return data if isinstance(data, list) else []
+                return json.load(f)
         except:
             return []
 
@@ -101,60 +88,122 @@ storage = SafeStorage(DATA_FILE)
 
 
 # -----------------------------
-# 🧠 PARSE REQUEST
+# 🧠 DOMAIN DETECTION
 # -----------------------------
-def parse_request(prompt):
+def detect_domain(prompt):
     text = prompt.lower()
 
-    rows = 1000
-    if "10k" in text:
-        rows = 10000
-    if "50k" in text:
-        rows = 50000
+    if any(x in text for x in ["sap", "purchase order", "po", "vendor", "plant"]):
+        return "sap"
 
-    cols = []
+    if any(x in text for x in ["ecommerce", "order", "product", "cart", "payment"]):
+        return "ecommerce"
 
-    if "name" in text:
-        cols.append(("name", "name"))
-    if "email" in text:
-        cols.append(("email", "email"))
-    if "country" in text:
-        cols.append(("country", "country"))
-    if "age" in text:
-        cols.append(("age", "age"))
-    if "price" in text or "amount" in text:
-        cols.append(("value", "amount"))
+    if any(x in text for x in ["medical", "patient", "hospital", "doctor"]):
+        return "medical"
 
-    if not cols:
-        cols = [("id", "int"), ("value", "amount")]
+    if any(x in text for x in ["it", "ticket", "incident", "bug", "issue"]):
+        return "it"
 
-    return rows, cols
+    return "unknown"
 
 
 # -----------------------------
-# 📧 EMAIL VALIDATION
+# 🧱 SCHEMAS
+# -----------------------------
+def sap_schema():
+    return [
+        ("po_number", "int"),
+        ("vendor_name", "name"),
+        ("vendor_email", "email"),
+        ("material_code", "int"),
+        ("plant", "string"),
+        ("quantity", "int"),
+        ("unit_price", "amount"),
+        ("currency", "currency"),
+        ("status", "string"),
+        ("po_date", "datetime")
+    ]
+
+
+def ecommerce_schema():
+    return [
+        ("order_id", "int"),
+        ("customer_name", "name"),
+        ("customer_email", "email"),
+        ("product", "string"),
+        ("category", "string"),
+        ("quantity", "int"),
+        ("price", "amount"),
+        ("payment_method", "string"),
+        ("status", "string"),
+        ("order_date", "datetime")
+    ]
+
+
+def medical_schema():
+    return [
+        ("patient_id", "int"),
+        ("patient_name", "name"),
+        ("age", "age"),
+        ("gender", "string"),
+        ("doctor", "name"),
+        ("diagnosis", "string"),
+        ("medicine", "string"),
+        ("hospital", "string"),
+        ("visit_date", "datetime")
+    ]
+
+
+def it_schema():
+    return [
+        ("ticket_id", "int"),
+        ("user_name", "name"),
+        ("email", "email"),
+        ("issue_type", "string"),
+        ("priority", "string"),
+        ("status", "string"),
+        ("assigned_to", "name"),
+        ("created_date", "datetime")
+    ]
+
+
+def get_schema(domain):
+    if domain == "sap":
+        return sap_schema()
+    if domain == "ecommerce":
+        return ecommerce_schema()
+    if domain == "medical":
+        return medical_schema()
+    if domain == "it":
+        return it_schema()
+    return []
+
+
+# -----------------------------
+# 🧠 VALUE ENGINE
 # -----------------------------
 def generate_email():
-    domains = ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com"]
-    return fake.user_name() + "@" + random.choice(domains)
+    return fake.user_name() + "@" + random.choice(["gmail.com", "yahoo.com", "outlook.com"])
 
 
-# -----------------------------
-# 🏗 DATA ENGINE
-# -----------------------------
 def gen_value(t):
     if t == "int":
-        return random.randint(1, 10000)
+        return random.randint(1000, 999999)
     if t == "name":
         return fake.name()
     if t == "email":
         return generate_email()
-    if t == "country":
-        return fake.country()
-    if t == "age":
-        return random.randint(18, 70)
+    if t == "string":
+        return fake.word()
     if t == "amount":
-        return round(np.random.lognormal(3, 1.2), 2)
+        return round(np.random.uniform(50, 5000), 2)
+    if t == "datetime":
+        return fake.date_between(start_date="-3y", end_date="today")
+    if t == "age":
+        return random.randint(18, 80)
+    if t == "currency":
+        return random.choice(["INR", "USD", "EUR"])
     return fake.word()
 
 
@@ -165,7 +214,7 @@ def generate_table(rows, cols):
         row = {}
 
         for name, t in cols:
-            if name == "id":
+            if name.endswith("id") or name == "po_number" or name == "order_id" or name == "ticket_id":
                 row[name] = i + 1
             else:
                 row[name] = gen_value(t)
@@ -176,22 +225,45 @@ def generate_table(rows, cols):
 
 
 # -----------------------------
-# 🧾 RECORD FORMAT
+# 🧾 RECORD
 # -----------------------------
-def create_record(prompt, rows, cols):
+def create_record(prompt, rows, cols, domain):
     return {
         "id": str(uuid.uuid4())[:8],
         "prompt": prompt,
         "rows": rows,
         "cols": [c[0] for c in cols],
+        "domain": domain,
         "created_at": str(datetime.now())
     }
 
 
 # -----------------------------
+# 🎯 PARSE + INTELLIGENCE
+# -----------------------------
+def parse_request(prompt):
+
+    domain = detect_domain(prompt)
+
+    # ❌ UNKNOWN DOMAIN HANDLING
+    if domain == "unknown":
+        return None, None, None
+
+    rows = 10
+    text = prompt.lower()
+
+    if "10k" in text:
+        rows = 10000
+
+    cols = get_schema(domain)
+
+    return rows, cols, domain
+
+
+# -----------------------------
 # TABS
 # -----------------------------
-tab1, tab2, tab3 = st.tabs(["🚀 Generate", "🎬 Gallery", "📊 Preview"])
+tab1, tab2 = st.tabs(["🚀 Generate", "🎬 Gallery"])
 
 
 # -----------------------------
@@ -203,102 +275,71 @@ with tab1:
 
     if st.button("Generate"):
 
-        rows, cols = parse_request(prompt)
+        rows, cols, domain = parse_request(prompt)
+
+        # ❌ UNKNOWN HANDLING (IMPORTANT)
+        if domain is None:
+            st.error("⚠️ I could not understand your request clearly.")
+
+            st.markdown("### ❓ Please specify one of these:")
+            st.write("""
+- SAP Purchase Order dataset  
+- Ecommerce order dataset  
+- Medical patient dataset  
+- IT ticket dataset  
+""")
+            st.stop()
+
         df = generate_table(rows, cols)
+
+        st.success(f"Generated {domain.upper()} dataset")
 
         st.session_state["last_df"] = df
 
-        record = create_record(prompt, rows, cols)
+        record = create_record(prompt, rows, cols, domain)
         storage.add(record)
 
-        st.success("Dataset generated!")
+        # PREVIEW
+        st.subheader("📊 Preview")
+        st.dataframe(df.head(15))
 
-        st.dataframe(df.head(20))
+        # METRICS
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Rows", len(df))
+        c2.metric("Columns", len(df.columns))
+        c3.metric("Nulls", int(df.isnull().sum().sum()))
 
-
-# -----------------------------
-# 🎬 NETFLIX STYLE GALLERY
-# -----------------------------
-with tab2:
-
-    st.subheader("🎬 Dataset Gallery")
-
-    search = st.text_input("🔍 Search")
-
-    history = storage.get_all()
-
-    if search:
-        history = [h for h in history if search.lower() in h.get("prompt", "").lower()]
-
-    if not history:
-        st.info("No datasets")
-    else:
-
-        cols_per_row = 3
-        rows = [history[i:i+cols_per_row] for i in range(0, len(history), cols_per_row)]
-
-        for row in rows:
-            cols_ui = st.columns(cols_per_row)
-
-            for i, item in enumerate(row):
-
-                with cols_ui[i]:
-
-                    st.markdown(f"""
-<div style="
-background:#111827;
-padding:15px;
-border-radius:12px;
-border:1px solid #1f2937;
-height:160px;
-">
-
-<h4 style="color:#60a5fa;">📦 Dataset</h4>
-
-<p>{item.get('prompt','')[:40]}...</p>
-
-<p style="color:#9ca3af;">
-Rows: {item.get('rows')} <br>
-Cols: {item.get('cols')}
-</p>
-
-</div>
-""", unsafe_allow_html=True)
-
-                    col1, col2 = st.columns(2)
-
-                    with col1:
-                        if st.button("Open", key="o"+item["id"]):
-                            st.session_state["view"] = item
-
-                    with col2:
-                        if st.button("🗑", key="d"+item["id"]):
-                            storage.delete(item["id"])
-                            st.rerun()
-
-
-# -----------------------------
-# 📊 PREVIEW (DETAIL VIEW)
-# -----------------------------
-with tab3:
-
-    if "last_df" in st.session_state:
-
-        df = st.session_state["last_df"]
-
-        st.subheader("📊 Dataset Preview")
-
-        st.dataframe(df.head(50))
-
-        st.write("Rows:", len(df))
-        st.write("Columns:", len(df.columns))
-        st.write("Nulls:", int(df.isnull().sum().sum()))
-
+        # DOWNLOAD
         st.download_button(
             "Download CSV",
             df.to_csv(index=False),
             "dataset.csv"
         )
 
+
+# -----------------------------
+# 🎬 GALLERY (NETFLIX STYLE)
+# -----------------------------
+with tab2:
+
+    st.subheader("🎬 Dataset Gallery")
+
+    history = storage.get_all()
+
+    if not history:
+        st.info("No datasets yet")
     else:
-        st.info("Generate dataset first")
+
+        for item in reversed(history):
+
+            st.markdown(f"""
+### 📦 {item.get('domain','UNKNOWN').upper()}
+- Prompt: {item.get('prompt')}
+- Rows: {item.get('rows')}
+- Columns: {item.get('cols')}
+- Time: {item.get('created_at')}
+""")
+
+            if st.button(f"🗑 Delete {item['id']}", key=item["id"]):
+                storage.delete(item["id"])
+                st.rerun()
