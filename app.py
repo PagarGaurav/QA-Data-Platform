@@ -99,7 +99,7 @@ class Storage:
 storage = Storage(DATA_FILE)
 
 # -----------------------------
-# OPENAI SCHEMA INFERENCE
+# OPENAI SCHEMA (STRICT NO-GARBAGE)
 # -----------------------------
 def extract_schema(prompt):
 
@@ -108,17 +108,16 @@ def extract_schema(prompt):
         st.stop()
 
     system = """
-You are a STRICT enterprise data schema generator.
+You are a STRICT enterprise schema generator.
 
-Return ONLY JSON array:
-[
-  {"name": "column_name", "type": "id|name|email|phone|address|pincode|status|int|float|date|string"}
-]
+ONLY allowed columns:
+id, first_name, last_name, full_name,
+email, phone, address, pincode, status
 
 Rules:
+- No new columns allowed
 - No explanation
-- No duplicates
-- snake_case only
+- Output ONLY JSON array
 """
 
     res = client.chat.completions.create(
@@ -140,13 +139,13 @@ Rules:
         st.stop()
 
 # -----------------------------
-# VALIDATION LAYER
+# VALIDATION (HARD WHITELIST)
 # -----------------------------
 def validate_schema(schema):
 
     allowed = {
-        "id","name","email","phone","address","pincode",
-        "status","int","float","date","string"
+        "id","first_name","last_name","full_name",
+        "email","phone","address","pincode","status"
     }
 
     clean = []
@@ -157,24 +156,21 @@ def validate_schema(schema):
         name = str(f.get("name","")).strip().lower()
         t = str(f.get("type","string")).strip().lower()
 
-        if not name or name in seen:
+        # ❌ DROP EVERYTHING NOT ALLOWED
+        if name not in allowed:
+            continue
+
+        if name in seen:
             continue
 
         seen.add(name)
 
-        if t not in allowed:
-            t = "string"
-
         clean.append({"name": name, "type": t})
-
-    if not clean:
-        st.error("❌ Schema empty after validation")
-        st.stop()
 
     return clean
 
 # -----------------------------
-# CONSISTENT ROW ENGINE (FIXED)
+# CONSISTENT GENERATION ENGINE
 # -----------------------------
 def generate(fields, rows):
 
@@ -182,13 +178,11 @@ def generate(fields, rows):
 
     for _ in range(rows):
 
-        # 🔥 ENTITY BASE (CONSISTENCY CORE)
         first = fake.first_name()
         last = fake.last_name()
+
         full_name = f"{first} {last}"
-
         email = f"{first.lower()}.{last.lower()}@gmail.com"
-
         address = fake.address().replace("\n", ", ")
         pincode = random.randint(100000, 999999)
 
@@ -199,35 +193,33 @@ def generate(fields, rows):
             n = f["name"].lower()
             t = f["type"]
 
-            # NAME CONSISTENCY
-            if "name" in n:
+            if n == "first_name":
+                row[f["name"]] = first
+
+            elif n == "last_name":
+                row[f["name"]] = last
+
+            elif n == "full_name":
                 row[f["name"]] = full_name
 
-            # EMAIL CONSISTENCY
-            elif "email" in n:
+            elif n == "email":
                 row[f["name"]] = email
 
-            # PHONE
-            elif "phone" in n:
+            elif n == "phone":
                 row[f["name"]] = "+91" + str(random.randint(6000000000, 9999999999))
 
-            # ADDRESS
-            elif "address" in n:
+            elif n == "address":
                 row[f["name"]] = address
 
-            # PINCODE
-            elif "pincode" in n or "pin" in n:
+            elif n == "pincode":
                 row[f["name"]] = pincode
 
-            # ID
-            elif "id" in n:
+            elif n == "id":
                 row[f["name"]] = str(uuid.uuid4())[:10]
 
-            # STATUS
-            elif "status" in n:
+            elif n == "status":
                 row[f["name"]] = random.choice(["ACTIVE","INACTIVE","PENDING","BLOCKED"])
 
-            # NUMERIC
             elif t == "int":
                 row[f["name"]] = random.randint(1, 9999)
 
