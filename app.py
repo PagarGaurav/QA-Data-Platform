@@ -1,19 +1,18 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-from faker import Faker
 import random
 import json
 import os
 import uuid
+from faker import Faker
 from datetime import datetime
 
 fake = Faker()
 
 # -----------------------------
-# 🎨 UI
+# 🎨 SAAS UI
 # -----------------------------
-st.set_page_config(page_title="AI Data Generator", layout="wide")
+st.set_page_config(page_title="AI Data Copilot SaaS", layout="wide")
 
 st.markdown("""
 <style>
@@ -22,202 +21,151 @@ st.markdown("""
     color: #e5e7eb;
 }
 
+.block-container {
+    padding-top: 2rem;
+}
+
 .stButton > button {
     background: linear-gradient(90deg, #6366f1, #3b82f6);
     color: white;
     border-radius: 10px;
+    border: none;
+}
+
+.stTextInput > div > div > input {
+    background-color: #111827;
+    color: white;
 }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🧠 AI Data Generator (Safe Production Mode)")
+st.title("🧠 AI Data Copilot SaaS (MVP)")
 
 
 # -----------------------------
-# 🛡 STORAGE (SAFE + BACKWARD COMPATIBLE)
+# 🗂 STORAGE (MULTI USER READY)
 # -----------------------------
-DATA_FILE = "storage.json"
+DATA_FILE = "copilot_data.json"
 
+def load_data():
+    if not os.path.exists(DATA_FILE):
+        return {}
+    try:
+        with open(DATA_FILE, "r") as f:
+            return json.load(f)
+    except:
+        return {}
 
-class Storage:
-
-    def __init__(self, file):
-        self.file = file
-        if not os.path.exists(file):
-            self._write([])
-
-    def _read(self):
-        try:
-            with open(self.file, "r") as f:
-                data = json.load(f)
-                return data if isinstance(data, list) else []
-        except:
-            return []
-
-    def _write(self, data):
-        tmp = self.file + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(data, f, indent=2)
-        os.replace(tmp, self.file)
-
-    def add(self, item):
-        data = self._read()
-        data.append(item)
-        self._write(data)
-
-    def get_all(self):
-        return self._read()
-
-
-storage = Storage(DATA_FILE)
+def save_data(data):
+    tmp = DATA_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f, indent=2)
+    os.replace(tmp, DATA_FILE)
 
 
 # -----------------------------
-# 🧠 DOMAIN + INTENT
+# 🧠 SESSION STATE (COPILOT MEMORY)
 # -----------------------------
-def detect_intent(prompt):
-    text = prompt.lower()
+if "schema" not in st.session_state:
+    st.session_state.schema = []
 
-    if any(x in text for x in ["login", "signup", "authentication"]):
-        return "functional"
+if "domain" not in st.session_state:
+    st.session_state.domain = None
 
-    return "domain"
+if "step" not in st.session_state:
+    st.session_state.step = 0
+
+if "chat" not in st.session_state:
+    st.session_state.chat = []
 
 
-def detect_domain(prompt):
-    text = prompt.lower()
+# -----------------------------
+# 🧠 DOMAIN DETECTION
+# -----------------------------
+def detect_domain(text):
 
-    if any(x in text for x in ["sap", "purchase order", "vendor", "plant"]):
+    text = text.lower()
+
+    if any(x in text for x in ["sap", "vendor", "material", "purchase", "po"]):
         return "sap"
 
-    if any(x in text for x in ["ecommerce", "order", "product", "cart"]):
-        return "ecommerce"
+    if any(x in text for x in ["health", "patient", "doctor", "hospital"]):
+        return "health"
 
-    if any(x in text for x in ["medical", "patient", "hospital"]):
-        return "medical"
+    if any(x in text for x in ["bank", "account", "loan", "transaction"]):
+        return "banking"
 
-    if any(x in text for x in ["it", "ticket", "bug", "issue"]):
-        return "it"
-
-    return "unknown"
+    return "generic"
 
 
 # -----------------------------
-# 🧱 SCHEMAS
+# 🧠 COPILOT QUESTIONS
 # -----------------------------
-def sap_schema():
-    return [
-        ("po_number", "int"),
-        ("vendor_name", "name"),
-        ("vendor_email", "email"),
-        ("material_code", "int"),
-        ("plant", "string"),
-        ("quantity", "int"),
-        ("unit_price", "amount"),
-        ("status", "string"),
-        ("po_date", "datetime")
-    ]
-
-
-def ecommerce_schema():
-    return [
-        ("order_id", "int"),
-        ("customer_name", "name"),
-        ("email", "email"),
-        ("product", "string"),
-        ("price", "amount"),
-        ("status", "string")
-    ]
-
-
-def medical_schema():
-    return [
-        ("patient_id", "int"),
-        ("patient_name", "name"),
-        ("age", "int"),
-        ("doctor", "name"),
-        ("diagnosis", "string"),
-        ("hospital", "string")
-    ]
-
-
-def it_schema():
-    return [
-        ("ticket_id", "int"),
-        ("user_name", "name"),
-        ("issue", "string"),
-        ("priority", "string"),
-        ("status", "string")
-    ]
-
-
-def login_schema():
-    return [
-        ("user_id", "int"),
-        ("username", "string"),
-        ("email", "email"),
-        ("password", "string"),
-        ("login_status", "string"),
-        ("device", "string")
-    ]
-
-
-def get_schema(domain, intent):
-    if intent == "functional":
-        return login_schema()
+def next_question(domain, schema):
 
     if domain == "sap":
-        return sap_schema()
+        flow = [
+            "Which SAP object? (PO / Sales Order / Vendor Master)",
+            "Do you need pricing fields? (yes/no)",
+            "Do you need Ship-to & Sold-to parties? (yes/no)"
+        ]
 
-    if domain == "ecommerce":
-        return ecommerce_schema()
+    elif domain == "health":
+        flow = [
+            "Which entity? (Patient / Doctor / Appointment)",
+            "Need diagnosis fields? (yes/no)",
+            "Need hospital details? (yes/no)"
+        ]
 
-    if domain == "medical":
-        return medical_schema()
+    elif domain == "banking":
+        flow = [
+            "Which object? (Account / Loan / Transaction)",
+            "Need balance & interest? (yes/no)",
+            "Need branch info? (yes/no)"
+        ]
 
-    if domain == "it":
-        return it_schema()
+    else:
+        flow = [
+            "What dataset do you want?",
+            "List fields separated by comma"
+        ]
+
+    if len(schema) < len(flow):
+        return flow[len(schema)]
 
     return None
 
 
 # -----------------------------
-# 🧠 VALUE ENGINE
+# 🧠 SCHEMA BUILDER
 # -----------------------------
-def gen_value(t):
+def update_schema(input_text):
 
-    if t == "int":
-        return random.randint(1000, 99999)
+    text = input_text.lower()
 
-    if t == "name":
-        return fake.name()
+    if "yes" in text:
+        st.session_state.schema.append(("extra_field", "string"))
 
-    if t == "email":
-        return fake.user_name() + "@gmail.com"
+    elif "," in input_text:
+        fields = [x.strip() for x in input_text.split(",")]
+        for f in fields:
+            st.session_state.schema.append((f, "string"))
 
-    if t == "string":
-        return fake.word()
 
-    if t == "amount":
-        return round(np.random.uniform(10, 5000), 2)
-
-    if t == "datetime":
-        return fake.date_between(start_date="-2y", end_date="today")
-
+# -----------------------------
+# 🧠 DATA GENERATION
+# -----------------------------
+def gen_value():
     return fake.word()
 
-
-def generate(rows, schema):
+def generate(schema):
     data = []
 
-    for i in range(rows):
+    for i in range(10):
         row = {}
 
-        for col, typ in schema:
-            if col.endswith("id") or col in ["po_number", "order_id", "ticket_id"]:
-                row[col] = i + 1
-            else:
-                row[col] = gen_value(typ)
+        for col, _ in schema:
+            row[col] = gen_value()
 
         data.append(row)
 
@@ -225,89 +173,94 @@ def generate(rows, schema):
 
 
 # -----------------------------
-# 🧾 SAFE RECORD (NORMALIZED)
+# 🧠 UI LAYOUT
 # -----------------------------
-def create_record(prompt, rows, schema, domain, intent):
+col1, col2 = st.columns([2, 1])
 
-    return {
-        "id": str(uuid.uuid4())[:8],
-        "prompt": prompt,
-        "rows": rows,
-        "domain": domain,
-        "intent": intent,
-        "cols": [c[0] for c in schema] if schema else [],
-        "created_at": str(datetime.now())
-    }
+# LEFT: COPILOT CHAT
+with col1:
+
+    st.subheader("💬 Copilot Chat")
+
+    user_input = st.text_input("Talk to Copilot")
+
+    if st.button("Send"):
+
+        # INIT DOMAIN
+        if st.session_state.domain is None:
+            st.session_state.domain = detect_domain(user_input)
+
+        # UPDATE SCHEMA
+        update_schema(user_input)
+
+        st.session_state.chat.append(("user", user_input))
+
+        # CHECK NEXT STEP
+        q = next_question(st.session_state.domain, st.session_state.schema)
+
+        if q:
+            st.session_state.chat.append(("ai", q))
+        else:
+
+            st.success("Schema complete. Generating dataset...")
+
+            df = generate(st.session_state.schema)
+
+            st.dataframe(df)
+
+            st.download_button(
+                "Download CSV",
+                df.to_csv(index=False),
+                "dataset.csv"
+            )
+
+            # SAVE TO SaaS HISTORY
+            data = load_data()
+
+            uid = str(uuid.uuid4())[:8]
+
+            data[uid] = {
+                "schema": st.session_state.schema,
+                "domain": st.session_state.domain,
+                "created_at": str(datetime.now())
+            }
+
+            save_data(data)
+
+            # RESET COPILOT
+            st.session_state.schema = []
+            st.session_state.domain = None
+            st.session_state.chat = []
 
 
-# -----------------------------
-# TABS
-# -----------------------------
-tab1, tab2 = st.tabs(["🚀 Generate", "📂 History"])
+    # CHAT DISPLAY
+    for role, msg in st.session_state.chat:
+        if role == "user":
+            st.markdown(f"🧑‍💻 **You:** {msg}")
+        else:
+            st.markdown(f"🤖 **Copilot:** {msg}")
 
 
-# -----------------------------
-# 🚀 GENERATE
-# -----------------------------
-with tab1:
+# RIGHT: SaaS PANEL
+with col2:
 
-    prompt = st.text_area("💬 Describe dataset")
+    st.subheader("📦 SaaS Dashboard")
 
-    if st.button("Generate"):
+    data = load_data()
 
-        intent = detect_intent(prompt)
-        domain = detect_domain(prompt)
+    if not data:
+        st.info("No datasets yet")
+    else:
+        for k, v in data.items():
 
-        schema = get_schema(domain, intent)
-
-        # ❌ SAFE MODE: NO GUESSING
-        if schema is None:
-
-            st.error("⚠️ I cannot safely generate this dataset without clarity.")
-
-            st.markdown("### ❓ Please specify:")
-            st.write("""
-- SAP / Ecommerce / Medical / IT / Login test  
-- Entity type (users, orders, patients, tickets)  
-- Required fields  
-- Purpose (testing / performance / validation)
+            st.markdown(f"""
+### 🧾 Dataset {k}
+- Domain: {v.get('domain','')}
+- Created: {v.get('created_at','')}
+- Fields: {v.get('schema',[])}
 """)
 
-            st.stop()
-
-        rows = 10
-        if "10k" in prompt.lower():
-            rows = 10000
-
-        df = generate(rows, schema)
-
-        st.success(f"{domain.upper()} / {intent.upper()} dataset generated")
-
-        st.dataframe(df.head(20))
-
-        st.metric("Rows", len(df))
-        st.metric("Columns", len(df.columns))
-
-        st.download_button("Download CSV", df.to_csv(index=False), "data.csv")
-
-        storage.add(create_record(prompt, rows, schema, domain, intent))
-
-
-# -----------------------------
-# 📂 HISTORY (SAFE ACCESS)
-# -----------------------------
-with tab2:
-
-    st.subheader("📂 History")
-
-    for item in reversed(storage.get_all()):
-
-        st.markdown(f"""
-### 🧾 {item.get('id', 'N/A')}
-- Prompt: {item.get('prompt', '')}
-- Domain: {item.get('domain', 'unknown')}
-- Intent: {item.get('intent', 'unknown')}
-- Rows: {item.get('rows', 0)}
-- Columns: {item.get('cols', [])}
-- Time: {item.get('created_at', '')}
-""")
+            if st.button(f"Delete {k}"):
+                del data[k]
+                save_data(data)
+                st.rerun()
