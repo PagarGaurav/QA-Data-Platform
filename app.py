@@ -11,7 +11,7 @@ from datetime import datetime
 fake = Faker()
 
 # -----------------------------
-# 🎨 UI (KEEP YOUR STYLE)
+# 🎨 UI (UNCHANGED)
 # -----------------------------
 st.set_page_config(page_title="AI Data Generator", layout="wide")
 
@@ -69,12 +69,15 @@ class Storage:
         data = [x for x in data if x.get("id") != item_id]
         self._write(data)
 
+    def get_all(self):
+        return self._read()
+
 
 storage = Storage(DATA_FILE)
 
 
 # -----------------------------
-# 🧠 DOMAIN DETECTION
+# 🧠 DOMAIN
 # -----------------------------
 def detect_domain(prompt):
     t = prompt.lower()
@@ -173,13 +176,23 @@ def generate(schema):
 
 
 # -----------------------------
+# 🧠 VERSIONING ENGINE
+# -----------------------------
+def get_version(data, prompt):
+    count = len([x for x in data if x.get("prompt") == prompt])
+    return f"v{count + 1}"
+
+
+# -----------------------------
 # 🧾 RECORD
 # -----------------------------
-def create_record(prompt, schema, domain):
+def create_record(prompt, schema, domain, data_store):
+
     return {
         "id": str(uuid.uuid4())[:8],
         "prompt": prompt,
         "domain": domain,
+        "version": get_version(data_store, prompt),
         "rows": 10,
         "cols": [c[0] for c in schema],
         "created_at": str(datetime.now())
@@ -187,7 +200,7 @@ def create_record(prompt, schema, domain):
 
 
 # -----------------------------
-# 🧠 SESSION STATE
+# SESSION
 # -----------------------------
 if "df" not in st.session_state:
     st.session_state.df = None
@@ -197,81 +210,135 @@ if "record" not in st.session_state:
 
 
 # -----------------------------
-# 🚀 GENERATE PAGE (ONLY PAGE YOU CARE ABOUT)
+# TABS
 # -----------------------------
-prompt = st.text_area("💬 Describe dataset")
+tab1, tab2 = st.tabs(["🚀 Generate", "📂 History"])
 
-if st.button("Generate"):
 
-    domain = detect_domain(prompt)
-    schema = schema_map(domain)
+# =============================
+# 🚀 GENERATE
+# =============================
+with tab1:
 
-    if not schema:
-        st.error("⚠️ Cannot understand request safely")
+    prompt = st.text_area("💬 Describe dataset")
+
+    if st.button("Generate"):
+
+        domain = detect_domain(prompt)
+        schema = schema_map(domain)
+
+        if not schema:
+            st.error("⚠️ Cannot understand request safely")
+            st.stop()
+
+        data_store = storage.get_all()
+
+        record = create_record(prompt, schema, domain, data_store)
+
+        df = generate(schema)
+
+        st.session_state.df = df
+        st.session_state.record = record
+
+        storage.add(record)
+
+        st.success(f"{domain} dataset generated ({record['version']})")
+
+
+    # -----------------------------
+    # RESULT DISPLAY
+    # -----------------------------
+    if st.session_state.df is not None:
+
+        st.markdown("### 📊 Generated Dataset")
+
+        st.dataframe(st.session_state.df)
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            if st.button("👁 View Schema"):
+                st.json(st.session_state.record)
+
+        with col2:
+            st.download_button(
+                "⬇ CSV",
+                st.session_state.df.to_csv(index=False),
+                file_name="dataset.csv"
+            )
+
+        with col3:
+            st.download_button(
+                "⬇ JSON",
+                json.dumps(st.session_state.record, indent=2),
+                file_name="dataset.json"
+            )
+
+        if st.button("🗑 Delete Last Dataset"):
+
+            storage.delete(st.session_state.record["id"])
+
+            st.session_state.df = None
+            st.session_state.record = None
+
+            st.warning("Deleted last dataset")
+            st.rerun()
+
+
+# =============================
+# 📂 HISTORY (VERSION SHOWN)
+# =============================
+with tab2:
+
+    st.subheader("📂 History")
+
+    data = storage.get_all()
+
+    if not data:
+        st.info("No history found")
         st.stop()
 
-    df = generate(schema)
-    record = create_record(prompt, schema, domain)
+    search = st.text_input("🔎 Search")
+    filter_domain = st.selectbox(
+        "🎛️ Filter",
+        ["ALL", "SAP", "MEDICAL", "BANKING", "IT", "LOGIN", "UNKNOWN"]
+    )
 
-    st.session_state.df = df
-    st.session_state.record = record
+    def match(x):
 
-    storage.add(record)
+        if search and search.lower() not in x.get("prompt", "").lower():
+            return False
 
-    st.success(f"{domain} dataset generated")
+        if filter_domain != "ALL" and x.get("domain") != filter_domain:
+            return False
 
-
-# -----------------------------
-# 📊 RESULT PANEL (FIRST PAGE UX)
-# -----------------------------
-if st.session_state.df is not None:
-
-    st.markdown("### 📊 Generated Dataset")
-
-    st.dataframe(st.session_state.df, use_container_width=True)
-
-    col1, col2, col3 = st.columns(3)
-
-    # VIEW
-    with col1:
-        if st.button("👁 View Schema"):
-            st.json(st.session_state.record)
-
-    # CSV DOWNLOAD
-    with col2:
-        st.download_button(
-            "⬇ CSV",
-            st.session_state.df.to_csv(index=False),
-            file_name="dataset.csv"
-        )
-
-    # JSON DOWNLOAD
-    with col3:
-        st.download_button(
-            "⬇ JSON",
-            json.dumps(st.session_state.record, indent=2),
-            file_name="dataset.json"
-        )
-
-    # DELETE LAST
-    if st.button("🗑 Delete Last Dataset"):
-
-        storage.delete(st.session_state.record["id"])
-
-        st.session_state.df = None
-        st.session_state.record = None
-
-        st.warning("Deleted last dataset")
-        st.rerun()
+        return True
 
 
-# -----------------------------
-# (OPTIONAL LIGHT HISTORY VIEW - NO UI COMPLEXITY)
-# -----------------------------
-with st.expander("📂 History (Simple View)"):
+    filtered = [x for x in data if match(x)]
 
-    try:
-        data = json.load(open(DATA_FILE))
-        st.write(data[-5:])
-    except:
-        st.write("No history")
+    st.markdown(f"### 📊 Showing {len(filtered)} records")
+
+    for item in reversed(filtered):
+
+        with st.expander(
+            f"🧾 {item.get('id')} | {item.get('domain')} | {item.get('version','v1')}"
+        ):
+
+            st.write("Prompt:", item.get("prompt"))
+            st.write("Domain:", item.get("domain"))
+            st.write("Version:", item.get("version"))
+            st.write("Columns:", item.get("cols"))
+            st.write("Rows:", item.get("rows"))
+            st.write("Time:", item.get("created_at"))
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                if st.button("👁 Preview", key="p"+item["id"]):
+                    st.json(item)
+
+            with col2:
+                if st.button("🗑 Delete", key="d"+item["id"]):
+                    storage.delete(item["id"])
+                    st.rerun()
