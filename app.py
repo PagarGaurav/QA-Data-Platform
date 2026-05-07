@@ -12,10 +12,14 @@ from openai import OpenAI
 fake = Faker()
 
 # -----------------------------
-# UI
+# PAGE CONFIG
 # -----------------------------
 st.set_page_config(page_title="AI Data Generator", layout="wide")
 
+
+# -----------------------------
+# UI STYLE
+# -----------------------------
 st.markdown("""
 <style>
 
@@ -37,36 +41,42 @@ st.markdown("""
     border-radius: 8px;
 }
 
-label {
-    color: white !important;
+/* Top bar */
+.top-bar {
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:10px 5px;
 }
 
-/* -----------------------------
-   🔑 ONLY API KEY FIELD FIX
-------------------------------*/
-section[data-testid="stSidebar"] input[aria-label="🔑 OpenAI API Key"] {
-    background-color: #ffffff !important;
-    color: #000000 !important;
-    border: 1px solid #d1d5db !important;
+.api-box input {
+    background-color: white !important;
+    color: black !important;
     border-radius: 8px;
+    border: 1px solid #d1d5db !important;
 }
 
-/* Label only for API key */
-section[data-testid="stSidebar"] label:has(+ input[aria-label="🔑 OpenAI API Key"]) {
-    color: #000000 !important;
+.api-label {
+    color: white;
     font-weight: 600;
+    margin-right: 8px;
 }
 
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🧠 AI Data Generator")
-
 
 # -----------------------------
-# API KEY
+# TOP HEADER (API KEY RIGHT SIDE)
 # -----------------------------
-api_key = st.sidebar.text_input("🔑 OpenAI API Key", type="password")
+col1, col2 = st.columns([8, 2])
+
+with col1:
+    st.title("🧠 AI Data Generator")
+
+with col2:
+    api_key = st.text_input("🔑 API Key", type="password")
+
 
 client = OpenAI(api_key=api_key) if api_key else None
 
@@ -117,7 +127,7 @@ storage = Storage(DATA_FILE)
 
 
 # -----------------------------
-# SIMPLE SCHEMA
+# SCHEMA
 # -----------------------------
 def smart_schema(prompt):
 
@@ -133,7 +143,6 @@ def smart_schema(prompt):
             {"name": "amount", "type": "amount"},
             {"name": "status", "type": "string"}
         ]
-
     else:
         fields += [
             {"name": "name", "type": "string"},
@@ -146,7 +155,7 @@ def smart_schema(prompt):
 
 
 # -----------------------------
-# VALUE ENGINE (VALID ONLY)
+# DATA ENGINE
 # -----------------------------
 def gen_value(field):
 
@@ -174,9 +183,6 @@ def gen_value(field):
     return "N/A"
 
 
-# -----------------------------
-# GENERATE
-# -----------------------------
 def generate(fields, rows):
 
     data = []
@@ -202,13 +208,13 @@ if "record" not in st.session_state:
 
 
 # -----------------------------
-# TABS
+# UI TABS
 # -----------------------------
 tab1, tab2 = st.tabs(["🚀 Generate", "📂 History"])
 
 
 # =============================
-# 🚀 GENERATE
+# GENERATE
 # =============================
 with tab1:
 
@@ -246,7 +252,7 @@ with tab1:
 
 
 # =============================
-# 📂 HISTORY
+# HISTORY
 # =============================
 with tab2:
 
@@ -259,11 +265,7 @@ with tab2:
     for item in reversed(data):
 
         st.markdown(f"""
-        <div style="
-            background:#111827;
-            padding:12px;
-            border-radius:10px;
-            margin-bottom:10px;">
+        <div style="background:#111827;padding:12px;border-radius:10px;margin-bottom:10px;">
         📦 {item.get('name')}
         </div>
         """, unsafe_allow_html=True)
@@ -282,18 +284,10 @@ with tab2:
         col1, col2 = st.columns(2)
 
         with col1:
-            st.download_button(
-                "⬇ CSV",
-                preview.to_csv(index=False),
-                file_name=f"{item['id']}.csv"
-            )
+            st.download_button("⬇ CSV", preview.to_csv(index=False), file_name=f"{item['id']}.csv")
 
         with col2:
-            st.download_button(
-                "⬇ JSON",
-                json.dumps(item, indent=2),
-                file_name=f"{item['id']}.json"
-            )
+            st.download_button("⬇ JSON", json.dumps(item, indent=2), file_name=f"{item['id']}.json")
 
         if st.button("🗑 Delete", key=item["id"]):
             storage.delete(item["id"])
