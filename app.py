@@ -7,11 +7,12 @@ import os
 import uuid
 from datetime import datetime
 import io
+from openai import OpenAI
 
 fake = Faker()
 
 # -----------------------------
-# UI (UNCHANGED)
+# UI (DO NOT CHANGE)
 # -----------------------------
 st.set_page_config(page_title="AI Data Generator", layout="wide")
 
@@ -48,14 +49,17 @@ section[data-testid="stSidebar"] {
 st.title("🧠 AI Data Generator")
 
 # -----------------------------
-# API KEY (RESTORED EXACT FLOW)
+# STRICT MODE CONFIG
+# -----------------------------
+STRICT_MODE = True
+
+# -----------------------------
+# API KEY (REQUIRED IN STRICT MODE)
 # -----------------------------
 api_key = st.sidebar.text_input("🔑 OpenAI API Key", type="password")
 
-# only create client if key exists (same as your original logic)
 client = None
 if api_key:
-    from openai import OpenAI
     client = OpenAI(api_key=api_key)
 
 # -----------------------------
@@ -101,69 +105,151 @@ class Storage:
 storage = Storage(DATA_FILE)
 
 # -----------------------------
-# SAFE EMAIL (FIXED)
+# STRICT EMAIL
 # -----------------------------
 def safe_email():
     return f"{fake.user_name()}@gmail.com"
 
 # -----------------------------
-# VALUE ENGINE (FIXED ONLY)
+# OPENAI SCHEMA (STRICT CONTRACT)
 # -----------------------------
-def gen_value(field):
+def extract_schema(prompt):
 
-    name = field["name"].lower()
-    t = field["type"]
+    if STRICT_MODE and not client:
+        st.error("❌ STRICT MODE: API key required")
+        st.stop()
 
-    if "id" in name:
+    system = """
+You are a STRICT DATA SCHEMA ENGINE.
+
+Return ONLY JSON array:
+[
+  {"name": "column_name", "type": "id|name|email|phone|status|int|float|date|role|string"}
+]
+
+RULES:
+- no explanation
+- no extra text
+- no duplicate columns
+- only valid schema fields
+- snake_case names only
+"""
+
+    res = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt}
+        ]
+    )
+
+    content = res.choices[0].message.content
+
+    try:
+        start = content.index("[")
+        end = content.rindex("]") + 1
+        return json.loads(content[start:end])
+    except:
+        st.error("❌ Invalid schema from OpenAI")
+        st.stop()
+
+# -----------------------------
+# SCHEMA VALIDATION (ENTERPRISE)
+# -----------------------------
+def validate_schema(schema):
+
+    allowed = {
+        "id","name","email","phone","status",
+        "int","float","date","role","string"
+    }
+
+    cleaned = []
+    seen = set()
+
+    for f in schema:
+
+        name = str(f.get("name","")).strip().lower()
+        t = str(f.get("type","string")).strip().lower()
+
+        if not name:
+            continue
+
+        if name in seen:
+            continue
+        seen.add(name)
+
+        if t not in allowed:
+            t = "string"
+
+        cleaned.append({"name": name, "type": t})
+
+    if not cleaned:
+        st.error("❌ Schema empty after validation")
+        st.stop()
+
+    return cleaned
+
+# -----------------------------
+# VALUE ENGINE (NO GARBAGE)
+# -----------------------------
+def gen_value(name, t):
+
+    n = name.lower()
+
+    if "id" in n:
         return str(uuid.uuid4())[:10]
 
-    if "name" in name:
-        return fake.name()
+    if "name" in n:
+        return fake.first_name() + " " + fake.last_name()
 
-    if "email" in name:
+    if "email" in n:
         return safe_email()
 
-    if "phone" in name:
-        return "+91-" + str(random.randint(6000000000, 9999999999))
+    if "phone" in n:
+        return "+91" + str(random.randint(6000000000, 9999999999))
 
-    if "age" in name:
-        return random.randint(18, 80)
+    if "status" in n:
+        return random.choice(["ACTIVE","INACTIVE","PENDING","BLOCKED"])
 
-    if "status" in name:
-        return random.choice(["ACTIVE", "INACTIVE", "PENDING", "SUCCESS"])
-
-    if t == "amount":
-        return round(random.uniform(100, 50000), 2)
+    if "role" in n:
+        return random.choice(["ADMIN","USER","MANAGER"])
 
     if t == "int":
         return random.randint(1, 9999)
 
-    return "N/A"
+    if t == "float":
+        return round(random.uniform(100, 100000), 2)
+
+    if t == "date":
+        return fake.date_this_year().isoformat()
+
+    if t == "string":
+        return fake.word()
+
+    return "UNKNOWN"
 
 # -----------------------------
-# GENERATOR
+# GENERATOR (STRICT COLUMNS ONLY)
 # -----------------------------
 def generate(fields, rows):
 
     data = []
 
     for _ in range(rows):
-        row = {f["name"]: gen_value(f) for f in fields}
+        row = {}
+
+        for f in fields:
+            row[f["name"]] = gen_value(f["name"], f["type"])
+
         data.append(row)
 
-    df = pd.DataFrame(data)
-    df.index = range(1, len(df) + 1)
-
-    return df
+    return pd.DataFrame(data)
 
 # -----------------------------
 # SESSION
 # -----------------------------
 if "df" not in st.session_state:
     st.session_state.df = None
-
-if "record" not in st.session_state:
-    st.session_state.record = None
 
 # -----------------------------
 # TABS
@@ -180,38 +266,22 @@ with tab1:
 
     if st.button("Generate"):
 
-        # (keeping your original smart schema logic)
-        text = prompt.lower()
+        if STRICT_MODE and not client:
+            st.error("❌ STRICT MODE: API key required")
+            st.stop()
 
-        fields = [{"name": "id", "type": "id"}]
-
-        if "bank" in text or "customer" in text:
-            fields += [
-                {"name": "name", "type": "string"},
-                {"name": "email", "type": "email"},
-                {"name": "phone", "type": "phone"},
-                {"name": "amount", "type": "amount"},
-                {"name": "status", "type": "string"}
-            ]
-        else:
-            fields += [
-                {"name": "name", "type": "string"},
-                {"name": "email", "type": "email"},
-                {"name": "phone", "type": "phone"},
-                {"name": "status", "type": "string"}
-            ]
+        fields = extract_schema(prompt)
+        fields = validate_schema(fields)
 
         df = generate(fields, rows)
         st.session_state.df = df
 
-        st.session_state.record = {
+        storage.add({
             "id": str(uuid.uuid4())[:8],
             "name": prompt[:40],
             "fields": fields,
             "created_at": str(datetime.now())
-        }
-
-        storage.add(st.session_state.record)
+        })
 
         st.success("Dataset generated")
 
@@ -222,36 +292,21 @@ with tab1:
         col1, col2, col3 = st.columns(3)
 
         with col1:
-            st.download_button(
-                "⬇ CSV",
-                st.session_state.df.to_csv(index=False),
-                file_name="data.csv"
-            )
+            st.download_button("⬇ CSV", st.session_state.df.to_csv(index=False), "data.csv")
 
         with col2:
-            st.download_button(
-                "⬇ JSON",
-                st.session_state.df.to_json(orient="records"),
-                file_name="data.json"
-            )
+            st.download_button("⬇ JSON", st.session_state.df.to_json(orient="records"), "data.json")
 
-        # -----------------------------
-        # EXCEL RESTORED
-        # -----------------------------
         with col3:
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
                 st.session_state.df.to_excel(writer, index=False)
             buffer.seek(0)
 
-            st.download_button(
-                "⬇ Excel",
-                buffer,
-                file_name="data.xlsx"
-            )
+            st.download_button("⬇ Excel", buffer, "data.xlsx")
 
 # =============================
-# HISTORY (UNCHANGED)
+# HISTORY
 # =============================
 with tab2:
 
@@ -279,7 +334,7 @@ with tab2:
         fields = item.get("fields", [])
 
         preview = pd.DataFrame([
-            {f["name"]: gen_value(f) for f in fields}
+            {f["name"]: gen_value(f["name"], f["type"]) for f in fields}
             for _ in range(3)
         ])
 
@@ -288,18 +343,10 @@ with tab2:
         col1, col2, col3 = st.columns(3)
 
         with col1:
-            st.download_button(
-                "⬇ CSV",
-                preview.to_csv(index=False),
-                file_name=f"{item['id']}.csv"
-            )
+            st.download_button("⬇ CSV", preview.to_csv(index=False), f"{item['id']}.csv")
 
         with col2:
-            st.download_button(
-                "⬇ JSON",
-                preview.to_json(orient="records"),
-                file_name=f"{item['id']}.json"
-            )
+            st.download_button("⬇ JSON", preview.to_json(orient="records"), f"{item['id']}.json")
 
         with col3:
             buffer = io.BytesIO()
@@ -307,10 +354,6 @@ with tab2:
                 preview.to_excel(writer, index=False)
             buffer.seek(0)
 
-            st.download_button(
-                "⬇ Excel",
-                buffer,
-                file_name=f"{item['id']}.xlsx"
-            )
+            st.download_button("⬇ Excel", buffer, f"{item['id']}.xlsx")
 
         st.markdown("---")
