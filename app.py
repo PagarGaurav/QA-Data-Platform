@@ -12,7 +12,7 @@ from openai import OpenAI
 fake = Faker()
 
 # -----------------------------
-# UI (NO CHANGE)
+# UI (UNCHANGED)
 # -----------------------------
 st.set_page_config(page_title="AI Data Generator", layout="wide")
 
@@ -89,7 +89,7 @@ class Storage:
 storage = Storage(DATA_FILE)
 
 # -----------------------------
-# SCHEMA EXTRACTION (LLM ONLY FOR STRUCTURE)
+# SCHEMA EXTRACTION (LLM ONLY)
 # -----------------------------
 def extract_schema(prompt):
 
@@ -102,11 +102,7 @@ Return ONLY JSON array:
 [
   {"name": "column", "type": "name|email|phone|id|address|number|date|text"}
 ]
-
-Rules:
-- Only infer structure
-- No explanations
-- No assumptions beyond prompt
+No explanation. No extra text.
 """
 
     res = client.chat.completions.create(
@@ -149,40 +145,46 @@ def validate_schema(schema):
     return clean
 
 # -----------------------------
-# ENTERPRISE RULE ENGINE
+# TEXT INTELLIGENCE ENGINE (FIXES GARBAGE OUTPUT)
 # -----------------------------
-def enrich_schema(schema):
+def smart_text(field, person):
 
-    enriched = []
+    f = field.lower()
+    first = person.split()[0]
 
-    for f in schema:
-        name = f["name"]
-        t = f["type"]
+    if "role" in f or "job" in f:
+        return random.choice([
+            "Software Engineer",
+            "Data Analyst",
+            "Project Manager",
+            "Business Analyst",
+            "Consultant"
+        ])
 
-        rule = None
+    if "company" in f:
+        return random.choice([
+            "Google", "Microsoft", "Amazon", "TCS", "Infosys"
+        ])
 
-        if "email" in name:
-            rule = "derive_name_email"
+    if "status" in f:
+        return random.choice(["Active", "Inactive", "Pending", "Completed"])
 
-        elif "age" in name:
-            rule = "range_18_65"
+    if "feedback" in f:
+        return random.choice([
+            "Good experience",
+            "Very satisfied",
+            "Needs improvement",
+            "Excellent service",
+            "Average experience"
+        ])
 
-        elif "salary" in name:
-            rule = "range_salary"
+    if "description" in f:
+        return f"{first} is a professional with relevant domain experience."
 
-        elif "id" in name:
-            rule = "unique"
-
-        enriched.append({
-            "name": name,
-            "type": t,
-            "rule": rule
-        })
-
-    return enriched
+    return f"Valid {field} for {first}"
 
 # -----------------------------
-# 🚀 ENTERPRISE DATA ENGINE (NO LLM ROW GENERATION)
+# ENTERPRISE DATA ENGINE
 # -----------------------------
 def generate(fields, rows):
 
@@ -199,7 +201,6 @@ def generate(fields, rows):
 
             name = f["name"]
             t = f["type"]
-            rule = f.get("rule")
 
             if t == "name":
                 row[name] = person
@@ -211,27 +212,19 @@ def generate(fields, rows):
                 row[name] = f"+91-{random.randint(70000,99999)}-{random.randint(10000,99999)}"
 
             elif t == "address":
-                row[name] = fake.city() + ", " + fake.country()
+                row[name] = f"{fake.city()}, {fake.country()}"
 
             elif t == "id":
                 row[name] = str(uuid.uuid4())
 
             elif t == "number":
-
-                if rule == "range_18_65":
-                    row[name] = random.randint(18, 65)
-
-                elif rule == "range_salary":
-                    row[name] = random.randint(30000, 250000)
-
-                else:
-                    row[name] = random.randint(1, 9999)
+                row[name] = random.randint(1, 10000)
 
             elif t == "date":
                 row[name] = fake.date_between("-3y", "today").isoformat()
 
             else:
-                row[name] = fake.sentence(nb_words=5)
+                row[name] = smart_text(name, person)
 
         data.append(row)
 
@@ -247,7 +240,7 @@ if "df" not in st.session_state:
     st.session_state.df = None
 
 # -----------------------------
-# TABS
+# TABS (UNCHANGED)
 # -----------------------------
 tab1, tab2 = st.tabs(["🚀 Generate", "📂 History"])
 
@@ -265,7 +258,6 @@ with tab1:
 
         schema = extract_schema(prompt)
         schema = validate_schema(schema)
-        schema = enrich_schema(schema)
 
         df = generate(schema, rows)
         st.session_state.df = df
