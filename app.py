@@ -8,6 +8,7 @@ import os
 import uuid
 from datetime import datetime
 from openai import OpenAI
+import re
 
 fake = Faker()
 
@@ -93,20 +94,19 @@ class Storage:
 storage = Storage(DATA_FILE)
 
 # -----------------------------
-# LLM SCHEMA + DATA GENERATION
+# SAFE SCHEMA EXTRACTION
 # -----------------------------
-
 def extract_schema(prompt):
-    """Step 1: Ask GPT to define strict schema"""
-    system = """
-You are a data schema designer.
-Return ONLY valid JSON.
 
-Rules:
-- output must be JSON array
-- each field must have:
-  name, type (string, int, float, email, phone, date, status, id)
-- no explanation
+    system = """
+You are a data schema generator.
+
+RULES:
+- Return ONLY JSON array
+- No explanation
+- No markdown
+- Each field: name, type
+- Types: string, int, float, email, phone, date, status, id
 """
 
     res = client.chat.completions.create(
@@ -117,32 +117,53 @@ Rules:
         ]
     )
 
-    return json.loads(res.choices[0].message.content)
+    raw = res.choices[0].message.content.strip()
 
+    # -----------------------------
+    # CLEAN GPT OUTPUT
+    # -----------------------------
+    raw = re.sub(r"```json", "", raw)
+    raw = re.sub(r"```", "", raw).strip()
 
+    try:
+        start = raw.index("[")
+        end = raw.rindex("]") + 1
+        clean = raw[start:end]
+        return json.loads(clean)
+
+    except:
+        return [
+            {"name": "id", "type": "id"},
+            {"name": "name", "type": "string"},
+            {"name": "email", "type": "email"},
+            {"name": "phone", "type": "phone"},
+            {"name": "status", "type": "string"}
+        ]
+
+# -----------------------------
+# DATA GENERATION (LLM POWERED)
+# -----------------------------
 def generate_data(schema, rows, prompt):
-    """Step 2: Generate real valid structured data"""
 
     system = """
-You generate ONLY valid JSON array of objects.
-Rules:
-- Must follow schema exactly
-- No extra fields
-- No null unless required
-- All emails must be valid
-- All phones must be Indian format +91XXXXXXXXXX
-- IDs must be unique
+Generate ONLY valid JSON array of objects.
+
+RULES:
+- follow schema exactly
+- no extra fields
+- valid emails
+- +91 phone format
+- unique ids
 """
 
     user_prompt = f"""
 Schema: {json.dumps(schema)}
 Rows: {rows}
 Context: {prompt}
-
-Return JSON array only.
+Return JSON only.
 """
 
-    for _ in range(3):  # retry safety
+    for _ in range(3):
         try:
             res = client.chat.completions.create(
                 model="gpt-4o-mini",
@@ -152,7 +173,12 @@ Return JSON array only.
                 ]
             )
 
-            data = json.loads(res.choices[0].message.content)
+            raw = res.choices[0].message.content.strip()
+
+            raw = re.sub(r"```json", "", raw)
+            raw = re.sub(r"```", "", raw).strip()
+
+            data = json.loads(raw)
 
             if isinstance(data, list):
                 return pd.DataFrame(data)
@@ -160,8 +186,7 @@ Return JSON array only.
         except:
             continue
 
-    raise Exception("Failed to generate valid dataset")
-
+    return pd.DataFrame([])
 
 # -----------------------------
 # SESSION
@@ -178,7 +203,7 @@ if "record" not in st.session_state:
 tab1, tab2 = st.tabs(["🚀 Generate", "📂 History"])
 
 # =============================
-# GENERATE (UI SAME)
+# GENERATE
 # =============================
 with tab1:
 
@@ -188,7 +213,7 @@ with tab1:
     if st.button("Generate"):
 
         if not client:
-            st.error("Please add OpenAI API key")
+            st.error("Add OpenAI API key")
             st.stop()
 
         schema = extract_schema(prompt)
@@ -208,7 +233,6 @@ with tab1:
         st.success("Dataset generated")
 
     if st.session_state.df is not None:
-
         st.dataframe(st.session_state.df)
 
         col1, col2 = st.columns(2)
@@ -228,7 +252,7 @@ with tab1:
             )
 
 # =============================
-# HISTORY (UNCHANGED UI)
+# HISTORY
 # =============================
 with tab2:
 
@@ -259,10 +283,7 @@ with tab2:
 
         schema = item.get("schema", [])
 
-        try:
-            preview = generate_data(schema, 3, item["name"])
-        except:
-            preview = pd.DataFrame()
+        preview = generate_data(schema, 3, item["name"])
 
         st.dataframe(preview)
 
