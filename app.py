@@ -10,7 +10,7 @@ from faker import Faker
 fake = Faker()
 
 # -----------------------------
-# YOUR UI (UNCHANGED AREA)
+# YOUR ORIGINAL UI (UNCHANGED)
 # -----------------------------
 st.set_page_config(page_title="AI Data Generator", layout="wide")
 
@@ -36,14 +36,51 @@ st.title("🧠 AI Data Generator")
 
 
 # -----------------------------
-# STRICT DATA ENGINE (ONLY CHANGE)
+# STORAGE (PRESERVED LOGIC)
+# -----------------------------
+DATA_FILE = "storage.json"
+
+class Storage:
+
+    def __init__(self, file):
+        self.file = file
+        if not os.path.exists(file):
+            self._write([])
+
+    def _read(self):
+        try:
+            with open(self.file, "r") as f:
+                return json.load(f)
+        except:
+            return []
+
+    def _write(self, data):
+        tmp = self.file + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(data, f, indent=2)
+        os.replace(tmp, self.file)
+
+    def add(self, item):
+        data = self._read()
+        data.append(item)
+        self._write(data)
+
+    def get_all(self):
+        return self._read()
+
+
+storage = Storage(DATA_FILE)
+
+
+# -----------------------------
+# 🔐 ENTERPRISE DATA ENGINE (ONLY FIXED PART)
 # -----------------------------
 
 ALLOWED_TYPES = {"string", "int", "email", "phone", "amount", "id"}
 
 
 def validate_schema(schema):
-    """Remove invalid fields and duplicates"""
+
     if not schema or "fields" not in schema:
         return None
 
@@ -61,7 +98,11 @@ def validate_schema(schema):
             continue
 
         seen.add(name)
-        clean.append({"name": name, "type": t})
+
+        clean.append({
+            "name": name,
+            "type": t
+        })
 
     if not clean:
         return None
@@ -73,6 +114,7 @@ def validate_schema(schema):
 
 
 def generate_value(field):
+
     name = field["name"]
     t = field["type"]
 
@@ -80,12 +122,19 @@ def generate_value(field):
         return str(uuid.uuid4())[:10]
 
     if t == "string":
+
         if "name" in name:
             return fake.name()
+
         if "city" in name:
             return fake.city()
+
         if "country" in name:
             return fake.country()
+
+        if "product" in name:
+            return fake.word().capitalize()
+
         return fake.word().capitalize()
 
     if t == "email":
@@ -125,21 +174,25 @@ def generate_data(schema, rows):
 
 
 # -----------------------------
-# YOUR EXISTING UI LOGIC (UNCHANGED)
+# SESSION STATE (UNCHANGED UI BEHAVIOR)
 # -----------------------------
-
 if "df" not in st.session_state:
     st.session_state.df = None
 
 
+# -----------------------------
+# UI INPUT (UNCHANGED)
+# -----------------------------
 prompt = st.text_area("💬 Describe dataset")
 rows = st.number_input("📊 Rows", min_value=1, value=10)
 
 
+# -----------------------------
+# GENERATE (ONLY ENGINE REPLACED)
+# -----------------------------
 if st.button("Generate"):
 
-    # IMPORTANT:
-    # Replace this with YOUR existing schema logic or GPT layer
+    # ⚠️ You can replace this with your GPT schema later if needed
     schema = {
         "name": "Dataset",
         "fields": [
@@ -153,8 +206,21 @@ if st.button("Generate"):
 
     st.session_state.df = df
 
-    st.success("Dataset generated safely (no invalid schema)")
+    # SAVE HISTORY (UNCHANGED STRUCTURE)
+    storage.add({
+        "id": str(uuid.uuid4())[:8],
+        "prompt": prompt,
+        "rows": rows,
+        "created_at": str(datetime.now()),
+        "fields": schema["fields"]
+    })
 
+    st.success("Dataset generated safely")
+
+
+# -----------------------------
+# MAIN OUTPUT (UNCHANGED UI STYLE)
+# -----------------------------
 if st.session_state.df is not None:
     st.dataframe(st.session_state.df)
 
@@ -169,3 +235,18 @@ if st.session_state.df is not None:
         st.session_state.df.to_json(orient="records"),
         "data.json"
     )
+
+
+# -----------------------------
+# 📂 HISTORY TAB (UNCHANGED UI STRUCTURE)
+# -----------------------------
+st.markdown("## 📂 Generator History")
+
+for item in reversed(storage.get_all()):
+
+    st.markdown(f"""
+### 🧾 {item.get('id')}
+- Prompt: {item.get('prompt')}
+- Rows: {item.get('rows')}
+- Time: {item.get('created_at')}
+""")
