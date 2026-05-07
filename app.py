@@ -6,8 +6,7 @@ import json
 import os
 import uuid
 from datetime import datetime
-from openai import OpenAI
-import re
+import io
 
 fake = Faker()
 
@@ -47,12 +46,6 @@ section[data-testid="stSidebar"] {
 """, unsafe_allow_html=True)
 
 st.title("🧠 AI Data Generator")
-
-# -----------------------------
-# OPENAI
-# -----------------------------
-api_key = st.sidebar.text_input("🔑 OpenAI API Key", type="password")
-client = OpenAI(api_key=api_key) if api_key else None
 
 # -----------------------------
 # STORAGE
@@ -97,35 +90,32 @@ class Storage:
 storage = Storage(DATA_FILE)
 
 # -----------------------------
-# SAFE VALUE GENERATOR (UNCHANGED)
+# SIMPLE VALUE ENGINE
 # -----------------------------
 def gen_value(t):
 
     if t == "id":
         return str(uuid.uuid4())[:10]
+
     if t == "email":
         return fake.email()
+
     if t == "phone":
         return "+91" + str(random.randint(6000000000, 9999999999))
+
     if t == "name":
         return fake.name()
-    if t == "password":
-        return fake.password(length=10, special_chars=False)
-    if t == "role":
-        return random.choice(["ADMIN", "USER", "MANAGER"])
+
     if t == "status":
         return random.choice(["ACTIVE", "INACTIVE", "BLOCKED", "PENDING"])
+
     if t == "int":
         return random.randint(1, 9999)
-    if t == "float":
-        return round(random.uniform(100, 100000), 2)
-    if t == "date":
-        return fake.date_this_year().isoformat()
 
     return fake.word()
 
 # -----------------------------
-# SCHEMA (SIMPLE)
+# SCHEMA
 # -----------------------------
 def extract_schema(prompt):
     return [
@@ -209,11 +199,10 @@ with tab1:
             )
 
 # =============================
-# 📂 HISTORY (FIXED UI)
+# HISTORY
 # =============================
 with tab2:
 
-    # TOP RIGHT: DELETE ALL
     colA, colB = st.columns([8, 2])
 
     with colB:
@@ -230,42 +219,54 @@ with tab2:
     for item in reversed(data):
 
         st.markdown(f"""
-        <div style="
-            background:#111827;
-            padding:10px;
-            border-radius:12px;
-            margin-bottom:8px;">
+        <div style="background:#111827;padding:10px;border-radius:12px;margin-bottom:8px;">
             <h4 style="color:white;margin:0;">📦 {item.get('name')}</h4>
         </div>
         """, unsafe_allow_html=True)
 
         schema = item.get("schema", [])
 
-        # LIMIT ROWS (NO BLANK CELLS FIX)
-        preview_rows = 3
-
         preview = pd.DataFrame([
             {f["name"]: gen_value(f["type"]) for f in schema}
-            for _ in range(preview_rows)
-        ])
-
-        # REMOVE EMPTY / NAN CELLS SAFELY
-        preview = preview.fillna("")
+            for _ in range(3)
+        ]).fillna("")
 
         st.dataframe(preview, height=200)
 
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
 
+        # CSV
         with col1:
             st.download_button(
-                "⬇ Download CSV",
+                "⬇ CSV",
                 preview.to_csv(index=False),
                 file_name=f"{item['id']}.csv"
             )
 
+        # JSON
         with col2:
-            if st.button("🗑 Delete", key=item["id"]):
-                storage.delete(item["id"])
-                st.rerun()
+            st.download_button(
+                "⬇ JSON",
+                preview.to_json(orient="records"),
+                file_name=f"{item['id']}.json"
+            )
+
+        # EXCEL
+        with col3:
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+                preview.to_excel(writer, index=False, sheet_name="data")
+            buffer.seek(0)
+
+            st.download_button(
+                "⬇ Excel",
+                buffer,
+                file_name=f"{item['id']}.xlsx"
+            )
+
+        # DELETE BUTTON
+        if st.button("🗑 Delete", key=item["id"]):
+            storage.delete(item["id"])
+            st.rerun()
 
         st.markdown("---")
