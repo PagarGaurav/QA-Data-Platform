@@ -10,13 +10,33 @@ from datetime import datetime
 
 fake = Faker()
 
-st.set_page_config(page_title="AI DataGen SaaS", layout="wide")
+# -----------------------------
+# 🎨 UI CONFIG
+# -----------------------------
+st.set_page_config(page_title="AI Data Generator", layout="wide")
+
+st.markdown("""
+<style>
+body {
+    background-color: #0e1117;
+    color: white;
+}
+.stApp {
+    background-color: #0e1117;
+}
+[data-testid="stMetricValue"] {
+    color: #4cc9f0;
+}
+</style>
+""", unsafe_allow_html=True)
+
+st.title("🧠 AI Data Generator SaaS")
 
 DATA_FILE = "storage.json"
 
 
 # -----------------------------
-# 🧾 STORAGE SYSTEM (SAAS FEATURE)
+# 🧾 STORAGE
 # -----------------------------
 def load_history():
     if not os.path.exists(DATA_FILE):
@@ -30,8 +50,12 @@ def save_history(history):
         json.dump(history, f, indent=2, default=str)
 
 
+if "history" not in st.session_state:
+    st.session_state.history = load_history()
+
+
 # -----------------------------
-# 🧠 SIMPLE AI INTENT ENGINE
+# 🧠 SMART PARSER
 # -----------------------------
 def parse_request(prompt):
     text = prompt.lower()
@@ -42,45 +66,61 @@ def parse_request(prompt):
     if "50k" in text:
         rows = 50000
 
-    columns = []
+    cols = []
 
     if "name" in text:
-        columns.append(("name", "name"))
+        cols.append(("name", "name"))
     if "email" in text:
-        columns.append(("email", "email"))
+        cols.append(("email", "email"))
     if "country" in text:
-        columns.append(("country", "country"))
+        cols.append(("country", "country"))
     if "age" in text:
-        columns.append(("age", "age"))
+        cols.append(("age", "age"))
     if "price" in text or "amount" in text:
-        columns.append(("value", "amount"))
+        cols.append(("value", "amount"))
 
-    if not columns:
-        columns = [("id", "int"), ("value", "amount")]
+    if not cols:
+        cols = [("id", "int"), ("value", "amount")]
 
-    return rows, columns
+    return rows, cols
 
 
 # -----------------------------
-# 🏗 DATA ENGINE
+# 🧠 REALISTIC DATA ENGINE (UPGRADED)
 # -----------------------------
-def gen_value(t):
+def generate_email(name=None):
+    domains = ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com"]
+    base = fake.user_name()
+    return f"{base}@{random.choice(domains)}"
+
+
+def gen_value(t, context=None):
     if t == "int":
         return random.randint(1, 10000)
+
     if t == "name":
         return fake.name()
+
     if t == "email":
-        return fake.email()
+        return generate_email()
+
     if t == "country":
         return fake.country()
+
     if t == "age":
         return random.randint(18, 70)
+
     if t == "amount":
-        return round(np.random.lognormal(3, 1), 2)
+        # realistic distribution (small majority, few large values)
+        return round(np.random.lognormal(3, 1.2), 2)
+
     return fake.word()
 
 
-def generate_df(rows, cols):
+# -----------------------------
+# 🏗 DATA GENERATOR
+# -----------------------------
+def generate_table(rows, cols):
     data = []
 
     for i in range(rows):
@@ -88,7 +128,7 @@ def generate_df(rows, cols):
 
         for name, t in cols:
             if name == "id":
-                row[name] = i + 1
+                row[name] = i + 1  # ✔ starts from 1
             else:
                 row[name] = gen_value(t)
 
@@ -98,81 +138,125 @@ def generate_df(rows, cols):
 
 
 # -----------------------------
-# 🧠 SAAS SESSION LOGIC
+# 📊 DATASET SUMMARY DASHBOARD
 # -----------------------------
-if "history" not in st.session_state:
-    st.session_state.history = load_history()
+def show_summary(df):
+    st.subheader("📊 Dataset Summary")
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric("Rows", len(df))
+    col2.metric("Columns", len(df.columns))
+    col3.metric("Null Values", int(df.isnull().sum().sum()))
+
+    st.write("### Column Types")
+    st.write(df.dtypes)
 
 
 # -----------------------------
-# 🎨 UI HEADER
+# 🔍 SEARCH PROJECTS
 # -----------------------------
-st.title("🧠 AI Data Generator SaaS")
-st.markdown("Generate realistic datasets instantly — like a mini data platform")
-
-tab1, tab2 = st.tabs(["🚀 Generate", "📂 My History"])
+def search_history(query):
+    return [
+        h for h in st.session_state.history
+        if query.lower() in h["prompt"].lower()
+    ]
 
 
 # -----------------------------
-# 🚀 GENERATION PAGE
+# 🎨 UI TABS
+# -----------------------------
+tab1, tab2 = st.tabs(["🚀 New Project", "📂 Projects"])
+
+
+# -----------------------------
+# 🚀 NEW PROJECT
 # -----------------------------
 with tab1:
 
     prompt = st.text_area(
         "💬 Describe dataset",
-        placeholder="e.g. Generate ecommerce users with name email country age 10k rows"
+        placeholder="Generate ecommerce users with name email age country 10k rows"
     )
 
-    if st.button("Generate Dataset"):
+    if st.button("🚀 Generate Dataset"):
 
-        rows, cols = parse_request(prompt)
-        df = generate_df(rows, cols)
+        with st.spinner("🧠 AI Engine is generating dataset..."):
+            rows, cols = parse_request(prompt)
+            df = generate_table(rows, cols)
 
         run_id = str(uuid.uuid4())[:8]
 
-        st.subheader("📊 Dataset Preview")
+        st.success("Dataset generated!")
+
+        st.subheader("📊 Preview")
         st.dataframe(df.head(20))
 
+        show_summary(df)
+
+        # ---------------- EXPORTS ----------------
         csv = df.to_csv(index=False).encode("utf-8")
+        json_data = df.to_json(orient="records")
+        excel = df.to_excel("temp.xlsx", index=False)
 
-        st.download_button(
-            "📁 Download CSV",
-            csv,
-            f"dataset_{run_id}.csv",
-            "text/csv"
-        )
+        col1, col2, col3 = st.columns(3)
 
-        # Save to history (SAAS feature)
+        with col1:
+            st.download_button("📁 CSV", csv, f"{run_id}.csv", "text/csv")
+
+        with col2:
+            st.download_button("📁 JSON", json_data, f"{run_id}.json")
+
+        with col3:
+            df.to_excel("temp.xlsx", index=False)
+            with open("temp.xlsx", "rb") as f:
+                st.download_button("📁 Excel", f, f"{run_id}.xlsx")
+
+        # save history
         record = {
             "id": run_id,
             "prompt": prompt,
             "rows": rows,
-            "columns": [c[0] for c in cols],
-            "timestamp": str(datetime.now())
+            "cols": [c[0] for c in cols],
+            "time": str(datetime.now())
         }
 
         st.session_state.history.append(record)
         save_history(st.session_state.history)
 
-        st.success(f"Saved run {run_id}")
-
 
 # -----------------------------
-# 📂 HISTORY PAGE (SAAS FEATURE)
+# 📂 PROJECTS (HISTORY + SEARCH)
 # -----------------------------
 with tab2:
 
-    st.subheader("📁 Past Generations")
+    st.subheader("📂 Projects")
 
-    if not st.session_state.history:
-        st.info("No history yet")
+    search = st.text_input("🔍 Search projects")
+
+    history = st.session_state.history
+
+    if search:
+        history = search_history(search)
+
+    if not history:
+        st.info("No projects found")
     else:
-        for item in reversed(st.session_state.history):
+        for item in reversed(history):
 
-            st.markdown(f"""
-### Run ID: {item['id']}
+            with st.container():
+
+                st.markdown(f"""
+### 🧾 {item['id']}
 - Prompt: {item['prompt']}
 - Rows: {item['rows']}
-- Columns: {item['columns']}
-- Time: {item['timestamp']}
+- Columns: {item['cols']}
+- Time: {item['time']}
 """)
+
+                if st.button(f"🗑 Delete {item['id']}", key=item["id"]):
+                    st.session_state.history = [
+                        h for h in st.session_state.history if h["id"] != item["id"]
+                    ]
+                    save_history(st.session_state.history)
+                    st.rerun()
