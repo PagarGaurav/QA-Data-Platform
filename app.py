@@ -1,65 +1,113 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
+from faker import Faker
 import random
 import json
 import os
 import uuid
-from faker import Faker
+from datetime import datetime
 
 fake = Faker()
 
 # -----------------------------
-# 🎬 UI THEME (Netflix SaaS)
+# 🎨 UI (KEEP YOUR STYLE)
 # -----------------------------
-st.set_page_config(page_title="AI Data Copilot SaaS", layout="wide")
+st.set_page_config(page_title="AI Data Generator", layout="wide")
 
 st.markdown("""
 <style>
 .stApp {
     background-color: #0b0f19;
-    color: white;
+    color: #e5e7eb;
 }
 
-.card {
-    background: #141a2e;
-    padding: 15px;
-    border-radius: 12px;
-    margin-bottom: 10px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+.stButton > button {
+    background: linear-gradient(90deg, #6366f1, #3b82f6);
+    color: white;
+    border-radius: 10px;
 }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🎬 AI Data Copilot SaaS")
+st.title("🧠 AI Data Generator (SaaS MVP)")
 
 
 # -----------------------------
-# 🗂 STORAGE
+# 🛡 STORAGE (SAFE)
 # -----------------------------
-FILE = "data.json"
+DATA_FILE = "storage.json"
 
-def load():
-    if not os.path.exists(FILE):
-        return []
-    try:
-        return json.load(open(FILE))
-    except:
-        return []
+class Storage:
 
-def save(data):
-    json.dump(data, open(FILE, "w"), indent=2)
+    def __init__(self, file):
+        self.file = file
+        if not os.path.exists(file):
+            self._write([])
+
+    def _read(self):
+        try:
+            with open(self.file, "r") as f:
+                data = json.load(f)
+                return data if isinstance(data, list) else []
+        except:
+            return []
+
+    def _write(self, data):
+        tmp = self.file + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(data, f, indent=2)
+        os.replace(tmp, self.file)
+
+    def add(self, item):
+        data = self._read()
+        data.append(item)
+        self._write(data)
+
+    def delete(self, item_id):
+        data = self._read()
+        data = [x for x in data if x.get("id") != item_id]
+        self._write(data)
+
+    def get_all(self):
+        return self._read()
+
+
+storage = Storage(DATA_FILE)
 
 
 # -----------------------------
-# 🧠 INTELLIGENCE ENGINE
+# 🧠 DOMAIN DETECTION
 # -----------------------------
-def detect(prompt):
+def detect_domain(prompt):
+    text = prompt.lower()
 
-    t = prompt.lower()
+    if any(x in text for x in ["sap", "purchase", "vendor", "material"]):
+        return "sap"
 
-    if any(x in t for x in ["sap", "vendor", "purchase"]):
-        return "SAP", [
-            ("vendor", "string"),
+    if any(x in text for x in ["ecommerce", "order", "product"]):
+        return "ecommerce"
+
+    if any(x in text for x in ["medical", "patient", "hospital"]):
+        return "medical"
+
+    if any(x in text for x in ["it", "ticket", "bug"]):
+        return "it"
+
+    if any(x in text for x in ["login", "user"]):
+        return "login"
+
+    return "unknown"
+
+
+# -----------------------------
+# 🧱 SCHEMAS
+# -----------------------------
+def schema_map(domain):
+
+    if domain == "sap":
+        return [
+            ("vendor", "name"),
             ("material", "string"),
             ("quantity", "int"),
             ("price", "amount"),
@@ -67,162 +115,159 @@ def detect(prompt):
             ("sold_to_party", "string")
         ]
 
-    if any(x in t for x in ["health", "patient", "doctor"]):
-        return "HEALTH", [
-            ("patient", "string"),
-            ("doctor", "string"),
+    if domain == "ecommerce":
+        return [
+            ("order_id", "int"),
+            ("customer", "name"),
+            ("product", "string"),
+            ("price", "amount")
+        ]
+
+    if domain == "medical":
+        return [
+            ("patient", "name"),
+            ("doctor", "name"),
             ("diagnosis", "string"),
             ("hospital", "string")
         ]
 
-    if any(x in t for x in ["bank", "account"]):
-        return "BANKING", [
-            ("account", "int"),
-            ("balance", "amount"),
-            ("transaction", "amount")
+    if domain == "it":
+        return [
+            ("ticket_id", "int"),
+            ("issue", "string"),
+            ("priority", "string")
         ]
 
-    if any(x in t for x in ["login", "user"]):
-        return "LOGIN", [
+    if domain == "login":
+        return [
             ("username", "string"),
-            ("email", "string"),
+            ("email", "email"),
             ("password", "string"),
             ("status", "string")
         ]
 
-    return None, None
+    return None
 
 
 # -----------------------------
 # 🧠 VALUE ENGINE
 # -----------------------------
-def gen(t):
+def gen_value(t):
 
     if t == "int":
         return random.randint(1000, 99999)
+
+    if t == "name":
+        return fake.name()
 
     if t == "string":
         return fake.word()
 
     if t == "amount":
-        return round(random.uniform(100, 5000), 2)
+        return round(np.random.uniform(10, 5000), 2)
+
+    if t == "email":
+        return fake.email()
 
     return fake.word()
 
 
-def generate(schema):
-    return pd.DataFrame([
-        {c: gen(t) for c, t in schema}
-        for _ in range(10)
-    ])
+def generate(rows, schema):
+    data = []
+
+    for i in range(rows):
+        row = {}
+
+        for col, typ in schema:
+
+            if col.endswith("id"):
+                row[col] = i + 1
+            else:
+                row[col] = gen_value(typ)
+
+        data.append(row)
+
+    return pd.DataFrame(data)
 
 
 # -----------------------------
-# 🗂 STORAGE WRAPPER
+# 🧾 RECORD
 # -----------------------------
-def add_record(obj):
-    data = load()
-    data.append(obj)
-    save(data)
+def create_record(prompt, rows, schema, domain):
 
-
-def delete_record(id):
-    data = load()
-    data = [x for x in data if x["id"] != id]
-    save(data)
-
-
-# -----------------------------
-# 🧠 SESSION
-# -----------------------------
-if "result" not in st.session_state:
-    st.session_state.result = None
+    return {
+        "id": str(uuid.uuid4())[:8],
+        "prompt": prompt,
+        "rows": rows,
+        "domain": domain,
+        "cols": [c[0] for c in schema] if schema else [],
+        "created_at": str(datetime.now())
+    }
 
 
 # -----------------------------
-# 🎯 LAYOUT
+# TABS (KEEP ORIGINAL UI)
 # -----------------------------
-tab1, tab2 = st.tabs(["🚀 Generate", "🎬 Dashboard"])
+tab1, tab2 = st.tabs(["🚀 Generate", "📂 History"])
 
 
-# =============================
-# 🚀 GENERATE TAB
-# =============================
+# -----------------------------
+# 🚀 GENERATE
+# -----------------------------
 with tab1:
 
     prompt = st.text_area("💬 Describe dataset")
 
     if st.button("Generate"):
 
-        domain, schema = detect(prompt)
+        domain = detect_domain(prompt)
+        schema = schema_map(domain)
 
         if not schema:
 
-            st.error("❌ Cannot understand request safely")
+            st.error("⚠️ Cannot understand request safely")
+            st.stop()
 
-            st.info("""
-Try:
-- SAP purchase order dataset
-- Health patient dataset
-- Banking account dataset
-- Login test users
-""")
+        df = generate(10, schema)
 
-        else:
+        st.success(f"{domain.upper()} dataset generated")
 
-            st.session_state.result = {
-                "id": str(uuid.uuid4())[:8],
-                "prompt": prompt,
-                "domain": domain,
-                "schema": schema,
-                "rows": 10
-            }
+        st.dataframe(df)
 
-            st.success(f"Detected: {domain}")
+        st.download_button(
+            "Download CSV",
+            df.to_csv(index=False),
+            "data.csv"
+        )
 
-            st.info("👉 Type YES to generate dataset")
+        storage.add(create_record(prompt, 10, schema, domain))
 
 
-    if st.session_state.result:
-
-        if st.text_input("Confirm (YES)") == "YES":
-
-            df = generate(st.session_state.result["schema"])
-
-            st.dataframe(df)
-
-            st.download_button(
-                "Download CSV",
-                df.to_csv(index=False),
-                "dataset.csv"
-            )
-
-            add_record(st.session_state.result)
-
-            st.session_state.result = None
-
-
-# =============================
-# 🎬 DASHBOARD TAB
-# =============================
+# -----------------------------
+# 📂 HISTORY (UPGRADED BUT SAME STYLE)
+# -----------------------------
 with tab2:
 
-    data = load()
+    st.subheader("📂 History")
 
-    st.subheader("🎬 Dataset Gallery")
+    data = storage.get_all()
+
+    if not data:
+        st.info("No history found")
+        st.stop()
 
     search = st.text_input("🔎 Search")
     filter_domain = st.selectbox(
-        "Filter",
-        ["ALL", "SAP", "HEALTH", "BANKING", "LOGIN"]
+        "🎛️ Filter",
+        ["ALL", "SAP", "ECOMMERCE", "MEDICAL", "IT", "LOGIN", "UNKNOWN"]
     )
 
     def match(x):
 
-        if search and search.lower() not in x["prompt"].lower():
+        if search and search.lower() not in x.get("prompt", "").lower():
             return False
 
-        if filter_domain != "ALL" and x["domain"] != filter_domain:
+        if filter_domain != "ALL" and x.get("domain", "").upper() != filter_domain:
             return False
 
         return True
@@ -230,29 +275,26 @@ with tab2:
 
     filtered = [x for x in data if match(x)]
 
-    cols = st.columns(3)
+    for item in reversed(filtered):
 
-    for i, item in enumerate(reversed(filtered)):
+        with st.expander(f"🧾 {item.get('id')} | {item.get('domain','unknown')}"):
 
-        with cols[i % 3]:
+            st.write("Prompt:", item.get("prompt"))
+            st.write("Domain:", item.get("domain"))
+            st.write("Columns:", item.get("cols"))
+            st.write("Rows:", item.get("rows"))
+            st.write("Time:", item.get("created_at"))
 
-            st.markdown(f"""
-<div class="card">
-<h4>📦 {item['domain']}</h4>
-<p>{item['prompt'][:60]}...</p>
-<p><b>ID:</b> {item['id']}</p>
-</div>
-""", unsafe_allow_html=True)
+            col1, col2 = st.columns(2)
 
-            c1, c2 = st.columns(2)
-
-            with c1:
-                if st.button("👁 View", key="v"+item["id"]):
-
-                    st.info("📊 Preview")
-                    st.write(item["schema"])
-
-            with c2:
-                if st.button("🗑 Delete", key="d"+item["id"]):
-                    delete_record(item["id"])
+            with col1:
+                if st.button("🗑 Delete", key=item["id"]):
+                    storage.delete(item["id"])
                     st.rerun()
+
+            with col2:
+                st.download_button(
+                    "⬇ Export",
+                    json.dumps(item, indent=2),
+                    file_name=f"{item['id']}.json"
+                )
