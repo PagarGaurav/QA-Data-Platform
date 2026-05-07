@@ -12,13 +12,7 @@ from openai import OpenAI
 fake = Faker()
 
 # -----------------------------
-# 🔑 OPENAI CLIENT
-# -----------------------------
-client = OpenAI(api_key="YOUR_API_KEY")  # <-- add your key
-
-
-# -----------------------------
-# 🎨 UI (UNCHANGED)
+# 🎨 UI
 # -----------------------------
 st.set_page_config(page_title="AI Data Generator", layout="wide")
 
@@ -37,7 +31,23 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🧠 AI Data Generator (OpenAI Powered)")
+st.title("🧠 AI Data Generator (Runtime API Mode)")
+
+
+# -----------------------------
+# 🔑 SIDEBAR API KEY (RUNTIME)
+# -----------------------------
+st.sidebar.title("🔑 OpenAI Settings")
+
+api_key = st.sidebar.text_input(
+    "Enter OpenAI API Key",
+    type="password"
+)
+
+if api_key:
+    client = OpenAI(api_key=api_key)
+else:
+    st.sidebar.warning("⚠️ Enter API key to enable AI generation")
 
 
 # -----------------------------
@@ -88,26 +98,24 @@ storage = Storage(DATA_FILE)
 # -----------------------------
 def ai_schema(prompt):
 
+    if not api_key:
+        st.error("API Key missing")
+        st.stop()
+
     res = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
             {
                 "role": "system",
                 "content": """
-You generate dataset schemas.
-
-Return ONLY JSON:
+Return ONLY JSON schema:
 {
   "domain": "...",
   "fields": [
     {"name": "...", "type": "string|int|amount|email"}
   ]
 }
-
-Rules:
-- No explanation
-- Minimal safe schema
-- No hallucinated fields
+No explanation.
 """
             },
             {"role": "user", "content": prompt}
@@ -166,7 +174,7 @@ def create_record(prompt, domain, fields, data_store):
 
 
 # -----------------------------
-# SESSION
+# SESSION STATE
 # -----------------------------
 if "df" not in st.session_state:
     st.session_state.df = None
@@ -182,7 +190,7 @@ tab1, tab2 = st.tabs(["🚀 Generate", "📂 History"])
 
 
 # =============================
-# 🚀 GENERATE TAB
+# 🚀 GENERATE
 # =============================
 with tab1:
 
@@ -190,26 +198,25 @@ with tab1:
 
     if st.button("Generate with AI"):
 
-        try:
-            schema = ai_schema(prompt)
+        if not api_key:
+            st.error("Please enter API key in sidebar")
+            st.stop()
 
-            domain = schema["domain"]
-            fields = schema["fields"]
+        schema = ai_schema(prompt)
 
-            df = generate(fields)
+        domain = schema["domain"]
+        fields = schema["fields"]
 
-            st.session_state.df = df
-            st.session_state.record = create_record(
-                prompt, domain, fields, storage.get_all()
-            )
+        df = generate(fields)
 
-            storage.add(st.session_state.record)
+        st.session_state.df = df
+        st.session_state.record = create_record(
+            prompt, domain, fields, storage.get_all()
+        )
 
-            st.success(f"{domain} dataset generated via OpenAI")
+        storage.add(st.session_state.record)
 
-        except Exception as e:
-            st.error("AI schema generation failed")
-            st.exception(e)
+        st.success(f"{domain} dataset generated via AI")
 
 
     # -----------------------------
@@ -253,7 +260,7 @@ with tab1:
 
 
 # =============================
-# 📂 HISTORY TAB
+# 📂 HISTORY
 # =============================
 with tab2:
 
