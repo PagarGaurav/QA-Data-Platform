@@ -5,10 +5,16 @@ import io
 import re
 
 # =========================================================
+# PAGE CONFIG
+# =========================================================
+st.set_page_config(
+    page_title="AI Product Price Comparison",
+    layout="wide"
+)
+
+# =========================================================
 # UI
 # =========================================================
-st.set_page_config(page_title="AI Product Comparison", layout="wide")
-
 st.markdown("""
 <style>
 .stApp {
@@ -20,15 +26,35 @@ st.markdown("""
     background: linear-gradient(90deg,#6366f1,#3b82f6);
     color:white;
     border-radius:10px;
+    border:none;
+    padding:10px 16px;
+    font-weight:600;
 }
 
 .stDownloadButton > button {
     background:white !important;
     color:black !important;
+    border-radius:10px;
+    font-weight:600;
+}
+
+section[data-testid="stSidebar"] {
+    background-color:#0b0f19 !important;
+}
+
+.card {
+    background:#111827;
+    padding:20px;
+    border-radius:16px;
+    margin-bottom:18px;
+    border:1px solid #1f2937;
 }
 </style>
 """, unsafe_allow_html=True)
 
+# =========================================================
+# TITLE
+# =========================================================
 st.title("🛒 AI Product Price Comparison")
 
 # =========================================================
@@ -41,30 +67,52 @@ api_key = st.sidebar.text_input(
 
 country = st.sidebar.selectbox(
     "🌍 Country",
-    ["India", "US"]
+    ["India", "US"],
+    index=0
+)
+
+max_products = st.sidebar.slider(
+    "📦 Max Products",
+    5,
+    50,
+    20
 )
 
 # =========================================================
-# SEARCH
+# SEARCH INPUT
 # =========================================================
 query = st.text_input(
     "🔍 Search Product",
-    placeholder="Example: black jeans"
+    placeholder="Example: black jeans, nike shoes, iphone 15"
 )
 
 # =========================================================
-# FETCH PRODUCTS
+# HELPERS
 # =========================================================
-def fetch_products(query):
+def extract_price(price):
+
+    nums = re.sub(r"[^\d]", "", str(price))
+
+    return int(nums) if nums else 999999
+
+
+# =========================================================
+# FETCH PRODUCTS FROM SERPAPI
+# =========================================================
+def fetch_products(search_query):
 
     params = {
         "engine": "google_shopping",
-        "q": query,
-        "api_key": api_key
+        "q": search_query,
+        "api_key": api_key,
+        "num": max_products
     }
 
     if country == "India":
         params["gl"] = "in"
+
+    if country == "US":
+        params["gl"] = "us"
 
     response = requests.get(
         "https://serpapi.com/search",
@@ -74,11 +122,11 @@ def fetch_products(query):
 
     data = response.json()
 
-    results = data.get("shopping_results", [])
+    shopping_results = data.get("shopping_results", [])
 
     products = []
 
-    for item in results:
+    for item in shopping_results:
 
         title = item.get("title", "")
         price = item.get("price", "")
@@ -86,114 +134,186 @@ def fetch_products(query):
         link = item.get("link", "")
         thumbnail = item.get("thumbnail", "")
         rating = item.get("rating", "")
+        reviews = item.get("reviews", "")
 
         products.append({
             "Product": title,
             "Price": price,
             "Platform": source,
             "Rating": rating,
+            "Reviews": reviews,
             "Link": link,
             "Image": thumbnail
         })
 
     return products
 
-# =========================================================
-# PRICE EXTRACTION
-# =========================================================
-def extract_price(p):
-
-    nums = re.sub(r"[^\d]", "", str(p))
-
-    return int(nums) if nums else 999999
 
 # =========================================================
-# COMPARE
+# SEARCH BUTTON
 # =========================================================
 if st.button("Compare Prices"):
 
     if not api_key:
-        st.warning("Enter SerpAPI key")
+        st.warning("Please enter SerpAPI key")
         st.stop()
 
     if not query:
-        st.warning("Enter product name")
+        st.warning("Please enter product name")
         st.stop()
 
-    with st.spinner("Fetching real products..."):
+    # =====================================================
+    # FETCH
+    # =====================================================
+    with st.spinner("Fetching real products from Google Shopping..."):
 
-        products = fetch_products(query)
+        try:
+            products = fetch_products(query)
 
+        except Exception as e:
+            st.error(f"Error: {e}")
+            st.stop()
+
+    # =====================================================
+    # NO PRODUCTS
+    # =====================================================
     if not products:
         st.error("No products found")
         st.stop()
 
+    # =====================================================
+    # DATAFRAME
+    # =====================================================
     df = pd.DataFrame(products)
 
+    # =====================================================
+    # CLEAN PRICES
+    # =====================================================
     df["price_num"] = df["Price"].apply(extract_price)
 
+    # =====================================================
+    # SORT BY CHEAPEST
+    # =====================================================
     df = df.sort_values("price_num")
 
     # =====================================================
-    # SHOW TABLE
+    # SUMMARY
     # =====================================================
-    st.success(f"Found {len(df)} products")
+    st.success(f"Found {len(df)} real products")
+
+    cheapest_price = df.iloc[0]["Price"]
+    cheapest_platform = df.iloc[0]["Platform"]
+
+    c1, c2 = st.columns(2)
+
+    with c1:
+        st.metric("🏆 Cheapest Price", cheapest_price)
+
+    with c2:
+        st.metric("🛍 Cheapest Platform", cheapest_platform)
+
+    st.markdown("---")
+
+    # =====================================================
+    # PRODUCT CARDS
+    # =====================================================
+    st.subheader("🛒 Product Comparison")
+
+    min_price = df["price_num"].min()
+
+    for _, row in df.iterrows():
+
+        with st.container():
+
+            st.markdown("""
+            <div class="card">
+            """, unsafe_allow_html=True)
+
+            col1, col2 = st.columns([1, 3])
+
+            # =================================================
+            # IMAGE
+            # =================================================
+            with col1:
+
+                if row["Image"]:
+                    st.image(
+                        row["Image"],
+                        width=180
+                    )
+
+            # =================================================
+            # DETAILS
+            # =================================================
+            with col2:
+
+                st.subheader(row["Product"])
+
+                st.write(f"🏬 Platform: {row['Platform']}")
+
+                st.write(f"💰 Price: {row['Price']}")
+
+                if row["Rating"]:
+                    st.write(f"⭐ Rating: {row['Rating']}")
+
+                if row["Reviews"]:
+                    st.write(f"📝 Reviews: {row['Reviews']}")
+
+                # CHEAPEST BADGE
+                if row["price_num"] == min_price:
+                    st.success("🏆 Cheapest Deal")
+
+                # BUY BUTTON
+                if row["Link"]:
+                    st.link_button(
+                        "🛒 Buy Now",
+                        row["Link"]
+                    )
+
+            st.markdown("</div>", unsafe_allow_html=True)
+
+    # =====================================================
+    # TABLE VIEW
+    # =====================================================
+    st.markdown("---")
+
+    st.subheader("📊 Table View")
 
     st.dataframe(
         df[[
             "Product",
             "Price",
             "Platform",
-            "Rating"
-        ]]
+            "Rating",
+            "Reviews"
+        ]],
+        use_container_width=True
     )
-
-    # =====================================================
-    # CHEAPEST
-    # =====================================================
-    st.subheader("🏆 Cheapest Deals")
-
-    cheapest = df.head(5)
-
-    for _, row in cheapest.iterrows():
-
-        st.markdown(f"""
-        <div style="
-            background:#111827;
-            padding:15px;
-            border-radius:12px;
-            margin-bottom:10px;
-        ">
-            <h4>{row['Product']}</h4>
-            <p>🏬 {row['Platform']}</p>
-            <h3>{row['Price']}</h3>
-            <p>⭐ {row['Rating']}</p>
-            <a href="{row['Link']}" target="_blank">
-                View Product
-            </a>
-        </div>
-        """, unsafe_allow_html=True)
 
     # =====================================================
     # DOWNLOADS
     # =====================================================
-    col1, col2, col3 = st.columns(3)
+    st.markdown("---")
 
-    with col1:
+    st.subheader("⬇ Download Results")
+
+    d1, d2, d3 = st.columns(3)
+
+    with d1:
         st.download_button(
             "CSV",
             df.to_csv(index=False),
             "products.csv"
         )
 
-    with col2:
+    with d2:
         st.download_button(
             "JSON",
             df.to_json(orient="records"),
             "products.json"
         )
 
-    with col3:
+    with d3:
         buffer = io.BytesIO()
 
         df.to_excel(
