@@ -25,25 +25,17 @@ st.markdown("""
     color: #e5e7eb;
 }
 
-/* Buttons */
 .stButton > button {
     background: linear-gradient(90deg, #6366f1, #3b82f6);
     color: white;
     border-radius: 10px;
 }
 
-/* Download buttons */
 .stDownloadButton > button {
     background-color: white !important;
     color: black !important;
     font-weight: 600;
     border-radius: 8px;
-}
-
-/* Sidebar label fix */
-[data-testid="stSidebar"] label {
-    color: black !important;
-    font-weight: 600;
 }
 
 label {
@@ -62,6 +54,7 @@ st.title("🧠 AI Data Generator")
 # -----------------------------
 api_key = st.sidebar.text_input("🔑 OpenAI API Key", type="password")
 
+client = None
 if api_key:
     client = OpenAI(api_key=api_key)
 
@@ -112,99 +105,142 @@ storage = Storage(DATA_FILE)
 
 
 # -----------------------------
-# AI SCHEMA
+# GPT SCHEMA CORRECTION LAYER
 # -----------------------------
-def ai_schema(prompt):
+def gpt_schema_correction(prompt):
 
-    if not api_key:
-        st.error("Enter API key")
-        st.stop()
+    if not client:
+        return None
 
-    res = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {
-                "role": "system",
-                "content": """
-Return ONLY JSON:
+    try:
+        res = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": """
+You are a Schema Correction Engine.
+
+Convert user request into CLEAN JSON schema.
+
+Rules:
+- Return ONLY JSON
+- Each field must have:
+  name (snake_case)
+  type (string, int, email, phone, amount, date, id)
+
+Infer intelligently but do not hallucinate domains.
+
+Format:
 {
   "name": "...",
-  "domain": "...",
   "fields": [
-    {"name":"...","type":"string|int|amount|email"}
+    {"name":"...","type":"..."}
   ]
 }
 """
-            },
-            {"role": "user", "content": prompt}
-        ],
-        response_format={"type": "json_object"}
-    )
+                },
+                {"role": "user", "content": prompt}
+            ],
+            response_format={"type": "json_object"}
+        )
 
-    return json.loads(res.choices[0].message.content)
+        return json.loads(res.choices[0].message.content)
+
+    except:
+        return None
 
 
 # -----------------------------
-# VALUE ENGINE
+# FALLBACK SCHEMA ENGINE
+# -----------------------------
+def smart_infer_fields(prompt):
+
+    text = prompt.lower()
+
+    fields = [{"name": "id", "type": "id"}]
+
+    if any(k in text for k in ["login", "user", "auth"]):
+        fields += [
+            {"name": "username", "type": "string"},
+            {"name": "email", "type": "email"},
+            {"name": "phone", "type": "phone"},
+            {"name": "status", "type": "string"}
+        ]
+
+    elif any(k in text for k in ["bank", "customer", "loan"]):
+        fields += [
+            {"name": "name", "type": "string"},
+            {"name": "email", "type": "email"},
+            {"name": "phone", "type": "phone"},
+            {"name": "address", "type": "string"},
+            {"name": "amount", "type": "amount"},
+            {"name": "status", "type": "string"}
+        ]
+
+    elif any(k in text for k in ["medical", "patient"]):
+        fields += [
+            {"name": "patient_name", "type": "string"},
+            {"name": "age", "type": "int"},
+            {"name": "email", "type": "email"},
+            {"name": "phone", "type": "phone"},
+            {"name": "status", "type": "string"}
+        ]
+
+    else:
+        fields += [
+            {"name": "name", "type": "string"},
+            {"name": "email", "type": "email"},
+            {"name": "phone", "type": "phone"},
+            {"name": "status", "type": "string"}
+        ]
+
+    return fields
+
+
+# -----------------------------
+# VALUE ENGINE (STRICT VALID DATA)
 # -----------------------------
 def gen_value(field):
 
     name = field["name"].lower()
     t = field["type"]
 
+    if "id" in name:
+        return str(uuid.uuid4())[:10]
+
     if "name" in name:
         return fake.name()
 
     if "email" in name:
-        return fake.first_name().lower() + "." + fake.last_name().lower() + "@gmail.com"
+        return fake.email()
 
-    if "vendor" in name:
-        return "VEN-" + str(random.randint(10000,99999))
+    if "phone" in name:
+        return "+91-" + str(random.randint(6000000000, 9999999999))
 
-    if "material" in name:
-        return "MAT-" + str(random.randint(100000,999999))
+    if "address" in name:
+        return f"{fake.building_number()} {fake.street_name()}, {fake.city()}"
 
-    if "po" in name:
-        return "PO-" + str(random.randint(100000,999999))
+    if "date" in name:
+        return fake.date_between("-5y", "today").strftime("%Y-%m-%d")
 
-    if t == "int":
-        return random.randint(1, 5000)
+    if "age" in name:
+        return random.randint(18, 80)
+
+    if "status" in name:
+        return random.choice(["ACTIVE", "INACTIVE", "PENDING", "SUCCESS", "FAILED"])
 
     if t == "amount":
-        return round(random.uniform(10, 10000), 2)
+        return round(random.uniform(10, 99999), 2)
 
-    return fake.word()
+    if t == "int":
+        return random.randint(1, 9999)
 
-
-# -----------------------------
-# VALIDATION + AUTO FIX
-# -----------------------------
-def is_valid_email(v):
-    return bool(re.match(r"^[\w\.-]+@[\w\.-]+\.\w+$", str(v)))
-
-
-def auto_fix(field, value):
-
-    name = field["name"].lower()
-
-    if "email" in name:
-        if not is_valid_email(value):
-            return fake.first_name().lower() + "." + fake.last_name().lower() + "@gmail.com"
-
-    if "vendor" in name:
-        return "VEN-" + str(random.randint(10000,99999))
-
-    if "material" in name:
-        return "MAT-" + str(random.randint(100000,999999))
-
-    if "po" in name:
-        return "PO-" + str(random.randint(100000,999999))
-
-    return value
+    return "N/A"
 
 
 # -----------------------------
-# GENERATOR (ROWS START FROM 1)
+# GENERATE DATA
 # -----------------------------
 def generate(fields, rows):
 
@@ -214,31 +250,29 @@ def generate(fields, rows):
         row = {}
 
         for f in fields:
-            val = gen_value(f)
-            row[f["name"]] = auto_fix(f, val)
+            row[f["name"]] = gen_value(f)
 
         data.append(row)
 
     df = pd.DataFrame(data)
-
-    # ROW INDEX START FROM 1
-    df.index = range(1, len(df) + 1)
+    df.index = range(1, len(df) + 1)  # START FROM 1
 
     return df
 
 
 # -----------------------------
-# VERSIONING
+# SCHEMA PIPELINE (GPT + FALLBACK)
 # -----------------------------
-def create_record(schema, data_store):
+def build_schema(prompt):
+
+    corrected = gpt_schema_correction(prompt)
+
+    if corrected and "fields" in corrected:
+        return corrected
 
     return {
-        "id": str(uuid.uuid4())[:8],
-        "name": schema.get("name"),
-        "domain": schema.get("domain"),
-        "version": f"v{len(data_store)+1}",
-        "fields": schema.get("fields"),
-        "created_at": str(datetime.now())
+        "name": prompt[:30],
+        "fields": smart_infer_fields(prompt)
     }
 
 
@@ -268,16 +302,21 @@ with tab1:
 
     if st.button("Generate"):
 
-        schema = ai_schema(prompt)
+        schema = build_schema(prompt)
 
         df = generate(schema["fields"], rows)
 
         st.session_state.df = df
-        st.session_state.record = create_record(schema, storage.get_all())
+        st.session_state.record = {
+            "id": str(uuid.uuid4())[:8],
+            "name": schema.get("name"),
+            "fields": schema.get("fields"),
+            "created_at": str(datetime.now())
+        }
 
         storage.add(st.session_state.record)
 
-        st.success(f"{schema['name']} generated")
+        st.success("Dataset generated")
 
 
     if st.session_state.df is not None:
@@ -287,10 +326,9 @@ with tab1:
             background:#111827;
             padding:12px;
             border-radius:10px;
-            margin-bottom:10px;
             font-weight:600;
-        ">
-        📦 {st.session_state.record["name"]} ({st.session_state.record["version"]})
+            margin-bottom:10px;">
+        📦 Dataset Preview
         </div>
         """, unsafe_allow_html=True)
 
@@ -312,24 +350,17 @@ with tab1:
                 "data.json"
             )
 
-        if st.button("🗑 Delete Last"):
-            storage.delete(st.session_state.record["id"])
-            st.session_state.df = None
-            st.session_state.record = None
-            st.rerun()
-
 
 # =============================
-# 📂 HISTORY (REAL DATA PREVIEW)
+# 📂 HISTORY
 # =============================
 with tab2:
 
     colA, colB = st.columns([8, 2])
 
     with colB:
-        if st.button("🗑 Delete All History"):
+        if st.button("🗑 Delete All"):
             storage.clear_all()
-            st.success("All history deleted")
             st.rerun()
 
     data = storage.get_all()
@@ -340,42 +371,11 @@ with tab2:
 
     for item in reversed(data):
 
-        st.markdown(f"### 📦 {item.get('name')} ({item.get('version')})")
-
-        # REAL DATA PREVIEW (NOT SCHEMA)
-        sample_fields = item.get("fields", [])
-
-        preview_df = pd.DataFrame([
-            {
-                f["name"]: gen_value(f)
-                for f in sample_fields
-            }
-            for _ in range(3)
-        ])
-
-        # ROWS START FROM 1
-        preview_df.index = range(1, len(preview_df) + 1)
-
-        st.dataframe(preview_df)
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.download_button(
-                "⬇ CSV",
-                preview_df.to_csv(index=False),
-                file_name=f"{item['id']}.csv"
-            )
-
-        with col2:
-            st.download_button(
-                "⬇ JSON",
-                json.dumps(item, indent=2),
-                file_name=f"{item['id']}.json"
-            )
+        st.markdown(f"""
+### 📦 {item.get('name')}
+ID: {item.get('id')}
+""")
 
         if st.button("🗑 Delete", key=item["id"]):
             storage.delete(item["id"])
             st.rerun()
-
-        st.markdown("---")
