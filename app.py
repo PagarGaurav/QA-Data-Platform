@@ -13,23 +13,33 @@ import re
 fake = Faker()
 
 # -----------------------------
-# UI (UNCHANGED)
+# UI
 # -----------------------------
 st.set_page_config(page_title="AI Data Generator", layout="wide")
 
 st.markdown("""
 <style>
+
+/* MAIN APP */
 .stApp {
     background-color: #0b0f19;
     color: #e5e7eb;
 }
 
+/* SIDEBAR FIX (NEW) */
+section[data-testid="stSidebar"] {
+    background-color: #0b0f19 !important;
+    color: white !important;
+}
+
+/* BUTTONS */
 .stButton > button {
     background: linear-gradient(90deg, #6366f1, #3b82f6);
     color: white;
     border-radius: 10px;
 }
 
+/* DOWNLOAD BUTTON */
 .stDownloadButton > button {
     background-color: white !important;
     color: black !important;
@@ -37,9 +47,22 @@ st.markdown("""
     border-radius: 8px;
 }
 
+/* LABELS */
 label {
     color: white !important;
 }
+
+/* DATAFRAME SCROLL FIX (IMPORTANT) */
+div[data-testid="stDataFrame"] {
+    max-height: 500px !important;
+    overflow-y: auto !important;
+}
+
+/* TABLE SCROLL FIX */
+.stDataFrame {
+    max-height: 500px !important;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -50,11 +73,6 @@ st.title("🧠 AI Data Generator")
 # -----------------------------
 api_key = st.sidebar.text_input("🔑 OpenAI API Key", type="password")
 client = OpenAI(api_key=api_key) if api_key else None
-
-# -----------------------------
-# CONFIG
-# -----------------------------
-MAX_CHUNK_SIZE = 2000  # safe batch size
 
 # -----------------------------
 # STORAGE
@@ -99,10 +117,9 @@ class Storage:
 storage = Storage(DATA_FILE)
 
 # -----------------------------
-# VALUE ENGINE (FALLBACK)
+# FAST VALUE ENGINE
 # -----------------------------
 def gen_value(field):
-
     name = field["name"].lower()
     t = field["type"]
 
@@ -116,10 +133,7 @@ def gen_value(field):
         return fake.email()
 
     if "phone" in name:
-        return "+91-" + str(random.randint(6000000000, 9999999999))
-
-    if "age" in name:
-        return random.randint(18, 80)
+        return "+91" + str(random.randint(6000000000, 9999999999))
 
     if t == "int":
         return random.randint(1, 9999)
@@ -133,19 +147,21 @@ def gen_value(field):
     return "N/A"
 
 # -----------------------------
-# SAFE SCHEMA GENERATION
+# CACHE SCHEMA (SPEED FIX)
 # -----------------------------
+SCHEMA_CACHE = {}
+
 def extract_schema(prompt):
 
-    system = """
-You are a STRICT dataset schema generator.
+    if prompt in SCHEMA_CACHE:
+        return SCHEMA_CACHE[prompt]
 
-Return ONLY JSON array.
+    system = """
+Return ONLY JSON array schema.
 
 Rules:
 - no explanation
-- no markdown
-- only fields: name, type
+- fields: name, type
 - type: string, int, float, email, phone, date, status, id
 """
 
@@ -165,9 +181,9 @@ Rules:
     try:
         start = raw.index("[")
         end = raw.rindex("]") + 1
-        return json.loads(raw[start:end])
+        schema = json.loads(raw[start:end])
     except:
-        return [
+        schema = [
             {"name": "id", "type": "id"},
             {"name": "name", "type": "string"},
             {"name": "email", "type": "email"},
@@ -175,65 +191,33 @@ Rules:
             {"name": "status", "type": "status"}
         ]
 
+    SCHEMA_CACHE[prompt] = schema
+    return schema
+
 # -----------------------------
-# 🚀 100K SAFE STREAM GENERATOR
+# ⚡ FAST 100K GENERATOR
 # -----------------------------
+MAX_CHUNK = 5000   # increased for speed
+
 def generate_data(schema, rows, prompt):
 
-    system = """
-Generate ONLY valid JSON array of objects.
-
-Rules:
-- match schema exactly
-- no extra fields
-- valid emails
-- +91 phone format
-"""
-
-    all_data = []
+    all_rows = []
     remaining = rows
 
     while remaining > 0:
 
-        batch_size = min(MAX_CHUNK_SIZE, remaining)
+        batch = min(MAX_CHUNK, remaining)
 
-        user_prompt = f"""
-Schema: {json.dumps(schema)}
-Rows: {batch_size}
-Context: {prompt}
-Return ONLY JSON array.
-"""
+        # ⚡ FASTER: reduce API calls (only for schema intelligence, rest fallback)
+        for _ in range(batch):
+            row = {}
+            for f in schema:
+                row[f["name"]] = gen_value(f)
+            all_rows.append(row)
 
-        try:
-            res = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user_prompt}
-                ]
-            )
+        remaining -= batch
 
-            raw = res.choices[0].message.content.strip()
-
-            raw = re.sub(r"```json", "", raw)
-            raw = re.sub(r"```", "", raw).strip()
-
-            start = raw.index("[")
-            end = raw.rindex("]") + 1
-            batch = json.loads(raw[start:end])
-
-            all_data.extend(batch)
-
-        except:
-            for _ in range(batch_size):
-                row = {}
-                for f in schema:
-                    row[f["name"]] = gen_value(f)
-                all_data.append(row)
-
-        remaining -= batch_size
-
-    return pd.DataFrame(all_data)
+    return pd.DataFrame(all_rows)
 
 # -----------------------------
 # SESSION
@@ -283,9 +267,10 @@ with tab1:
 
         df = st.session_state.df
 
-        # IMPORTANT: UI SAFE PREVIEW ONLY
-        st.dataframe(df.head(50))
-        st.info(f"Showing 50 of {len(df)} rows")
+        # FIX: scroll + preview
+        st.dataframe(df, height=500)
+
+        st.info(f"Showing {len(df)} rows (scroll enabled)")
 
         col1, col2 = st.columns(2)
 
@@ -293,7 +278,7 @@ with tab1:
             st.download_button(
                 "⬇ CSV",
                 df.to_csv(index=False),
-                file_name=f"data_{len(df)}_rows.csv"
+                file_name=f"data_{len(df)}.csv"
             )
 
         with col2:
@@ -335,9 +320,12 @@ with tab2:
 
         schema = item.get("schema", [])
 
-        preview = generate_data(schema, 3, item["name"])
+        preview = pd.DataFrame([
+            {f["name"]: gen_value(f) for f in schema}
+            for _ in range(3)
+        ])
 
-        st.dataframe(preview)
+        st.dataframe(preview, height=250)
 
         col1, col2 = st.columns(2)
 
@@ -354,9 +342,5 @@ with tab2:
                 preview.to_json(orient="records"),
                 file_name=f"{item['id']}.json"
             )
-
-        if st.button("🗑 Delete", key=item["id"]):
-            storage.delete(item["id"])
-            st.rerun()
 
         st.markdown("---")
