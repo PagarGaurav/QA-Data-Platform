@@ -12,7 +12,7 @@ from openai import OpenAI
 fake = Faker()
 
 # -----------------------------
-# UI (UNCHANGED - DO NOT TOUCH)
+# UI (NO CHANGE)
 # -----------------------------
 st.set_page_config(page_title="AI Data Generator", layout="wide")
 
@@ -97,16 +97,17 @@ class Storage:
 storage = Storage(DATA_FILE)
 
 # -----------------------------
-# SCHEMA (FAST + CACHED)
+# SCHEMA (SINGLE CALL ONLY)
 # -----------------------------
-@st.cache_data
 def extract_schema(prompt):
 
     system = """
-Return ONLY JSON array:
-[
-  {"name": "column", "type": "name|email|phone|id|address|number|date|text"}
-]
+Return ONLY JSON:
+{
+ "columns":[
+   {"name":"column","type":"name|email|phone|id|address|number|date|text"}
+ ]
+}
 """
 
     res = client.chat.completions.create(
@@ -119,15 +120,17 @@ Return ONLY JSON array:
     )
 
     content = res.choices[0].message.content
-    start = content.find("[")
-    end = content.rfind("]") + 1
 
-    return json.loads(content[start:end])
+    start = content.find("{")
+    end = content.rfind("}") + 1
+
+    return json.loads(content[start:end])["columns"]
 
 # -----------------------------
 # VALIDATION
 # -----------------------------
 def validate(schema):
+
     allowed = {"name","email","phone","id","address","number","date","text"}
 
     clean = []
@@ -140,7 +143,35 @@ def validate(schema):
     return clean
 
 # -----------------------------
-# ⚡ FAST GENERATION ENGINE (NO GPT ROWS)
+# 🧠 SMART COLUMN MAPPER (V6 FIX CORE)
+# -----------------------------
+def infer_type(col):
+
+    c = col.lower()
+
+    if any(x in c for x in ["name","person","customer"]):
+        return "name"
+    if any(x in c for x in ["email","mail"]):
+        return "email"
+    if any(x in c for x in ["phone","mobile"]):
+        return "phone"
+    if any(x in c for x in ["address","city","location"]):
+        return "address"
+    if any(x in c for x in ["id","uuid"]):
+        return "id"
+    if any(x in c for x in ["age","salary","amount","price"]):
+        return "number"
+    if any(x in c for x in ["date","time","created"]):
+        return "date"
+    if any(x in c for x in ["role","job","designation"]):
+        return "role"
+    if any(x in c for x in ["status"]):
+        return "status"
+
+    return "text"
+
+# -----------------------------
+# 🧠 CORE GENERATION ENGINE (V6)
 # -----------------------------
 def generate(fields, rows, prompt):
 
@@ -150,19 +181,21 @@ def generate(fields, rows, prompt):
 
         row = {}
 
+        # consistent identity per row
         person = fake.name()
         first = person.split()[0].lower()
+        base_email = f"{first}{random.randint(10,999)}@gmail.com"
 
         for f in fields:
 
             name = f["name"]
-            t = f["type"]
+            t = infer_type(name)
 
             if t == "name":
                 row[name] = person
 
             elif t == "email":
-                row[name] = f"{first}{random.randint(10,999)}@gmail.com"
+                row[name] = base_email
 
             elif t == "phone":
                 row[name] = f"+91-{random.randint(70000,99999)}-{random.randint(10000,99999)}"
@@ -179,14 +212,22 @@ def generate(fields, rows, prompt):
             elif t == "date":
                 row[name] = fake.date_between("-3y", "today").isoformat()
 
+            elif t == "role":
+                row[name] = random.choice([
+                    "Software Engineer",
+                    "Data Analyst",
+                    "Product Manager",
+                    "Consultant",
+                    "HR Executive"
+                ])
+
+            elif t == "status":
+                row[name] = random.choice([
+                    "Active", "Inactive", "Pending", "Completed"
+                ])
+
             else:
-                # smart fallback (no garbage text anymore)
-                if "role" in name:
-                    row[name] = random.choice(["Engineer","Analyst","Manager","Consultant"])
-                elif "status" in name:
-                    row[name] = random.choice(["Active","Inactive","Pending"])
-                else:
-                    row[name] = fake.word()
+                row[name] = fake.word()
 
         data.append(row)
 
@@ -202,7 +243,7 @@ if "df" not in st.session_state:
     st.session_state.df = None
 
 # -----------------------------
-# TABS (UNCHANGED UI)
+# TABS (UNCHANGED)
 # -----------------------------
 tab1, tab2 = st.tabs(["🚀 Generate", "📂 History"])
 
@@ -250,7 +291,7 @@ with tab1:
             st.download_button("Excel", buffer, "data.xlsx")
 
 # =============================
-# HISTORY (UNCHANGED FUNCTIONALITY)
+# HISTORY (UNCHANGED UI)
 # =============================
 with tab2:
 
