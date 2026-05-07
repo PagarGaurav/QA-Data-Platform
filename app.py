@@ -1,18 +1,18 @@
 import streamlit as st
 import pandas as pd
-from faker import Faker
 import random
 import json
 import os
 import uuid
 from datetime import datetime
 import io
+from faker import Faker
 from openai import OpenAI
 
 fake = Faker()
 
 # -----------------------------
-# UI (UNCHANGED)
+# UI (NO CHANGE)
 # -----------------------------
 st.set_page_config(page_title="AI Data Generator", layout="wide")
 
@@ -49,8 +49,10 @@ section[data-testid="stSidebar"] {
 st.title("🧠 AI Data Generator")
 
 # -----------------------------
-# API KEY
+# CONFIG
 # -----------------------------
+STRICT_MODE = True
+
 api_key = st.sidebar.text_input("🔑 OpenAI API Key", type="password")
 client = OpenAI(api_key=api_key) if api_key else None
 
@@ -97,9 +99,85 @@ class Storage:
 storage = Storage(DATA_FILE)
 
 # -----------------------------
-# SAFE VALUE ENGINE (SAME LOGIC)
+# OPENAI SCHEMA GENERATION
 # -----------------------------
-def gen_value(name):
+def extract_schema(prompt):
+
+    if STRICT_MODE and not client:
+        st.error("❌ STRICT MODE: API key required")
+        st.stop()
+
+    system = """
+You are a STRICT enterprise data schema generator.
+
+Return ONLY JSON array:
+[
+  {"name": "column_name", "type": "id|name|email|phone|address|pincode|status|int|float|date|string"}
+]
+
+Rules:
+- No explanation
+- No extra text
+- No duplicates
+- Use snake_case
+"""
+
+    res = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt}
+        ]
+    )
+
+    content = res.choices[0].message.content
+
+    try:
+        start = content.index("[")
+        end = content.rindex("]") + 1
+        return json.loads(content[start:end])
+    except:
+        st.error("❌ Invalid schema from OpenAI")
+        st.stop()
+
+# -----------------------------
+# VALIDATION LAYER
+# -----------------------------
+def validate_schema(schema):
+
+    allowed_types = {
+        "id","name","email","phone","address","pincode",
+        "status","int","float","date","string"
+    }
+
+    clean = []
+    seen = set()
+
+    for f in schema:
+
+        name = str(f.get("name","")).strip().lower()
+        t = str(f.get("type","string")).strip().lower()
+
+        if not name or name in seen:
+            continue
+
+        seen.add(name)
+
+        if t not in allowed_types:
+            t = "string"
+
+        clean.append({"name": name, "type": t})
+
+    if not clean:
+        st.error("❌ Schema empty after validation")
+        st.stop()
+
+    return clean
+
+# -----------------------------
+# SAFE VALUE ENGINE
+# -----------------------------
+def gen_value(name, t):
 
     n = name.lower()
 
@@ -110,48 +188,49 @@ def gen_value(name):
         return fake.name()
 
     if "email" in n:
-        return f"{fake.user_name()}@gmail.com"
+        return fake.email()
 
     if "phone" in n:
         return "+91" + str(random.randint(6000000000, 9999999999))
 
+    if "address" in n:
+        return fake.address().replace("\n", ", ")
+
+    if "pincode" in n:
+        return random.randint(100000, 999999)
+
     if "status" in n:
         return random.choice(["ACTIVE","INACTIVE","PENDING","BLOCKED"])
+
+    if t == "int":
+        return random.randint(1, 9999)
+
+    if t == "float":
+        return round(random.uniform(100, 100000), 2)
+
+    if t == "date":
+        return fake.date_this_year().isoformat()
 
     return fake.word()
 
 # -----------------------------
-# SIMPLE SCHEMA
-# -----------------------------
-def smart_schema(prompt):
-
-    text = prompt.lower()
-
-    fields = [{"name": "id"}]
-
-    fields += [
-        {"name": "name"},
-        {"name": "email"},
-        {"name": "phone"},
-        {"name": "status"}
-    ]
-
-    return fields
-
-# -----------------------------
-# GENERATOR (✔ INDEX FIX HERE)
+# GENERATOR
 # -----------------------------
 def generate(fields, rows):
 
     data = []
 
     for _ in range(rows):
-        row = {f["name"]: gen_value(f["name"]) for f in fields}
+        row = {}
+
+        for f in fields:
+            row[f["name"]] = gen_value(f["name"], f["type"])
+
         data.append(row)
 
     df = pd.DataFrame(data)
 
-    # ✅ FIX: index starts from 1
+    # INDEX FIX (START FROM 1)
     df.index = range(1, len(df) + 1)
 
     return df
@@ -177,9 +256,10 @@ with tab1:
 
     if st.button("Generate"):
 
-        fields = smart_schema(prompt)
-        df = generate(fields, rows)
+        fields = extract_schema(prompt)
+        fields = validate_schema(fields)
 
+        df = generate(fields, rows)
         st.session_state.df = df
 
         storage.add({
@@ -195,24 +275,22 @@ with tab1:
 
         st.dataframe(st.session_state.df)
 
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
 
         with col1:
-            st.download_button(
-                "⬇ CSV",
-                st.session_state.df.to_csv(index=False),
-                file_name="data.csv"
-            )
+            st.download_button("⬇ CSV", st.session_state.df.to_csv(index=False), "data.csv")
 
         with col2:
-            st.download_button(
-                "⬇ JSON",
-                st.session_state.df.to_json(orient="records"),
-                file_name="data.json"
-            )
+            st.download_button("⬇ JSON", st.session_state.df.to_json(orient="records"), "data.json")
+
+        with col3:
+            buffer = io.BytesIO()
+            st.session_state.df.to_excel(buffer, index=False)
+            buffer.seek(0)
+            st.download_button("⬇ Excel", buffer, "data.xlsx")
 
 # =============================
-# HISTORY (✔ DELETE PER GRID FIXED)
+# HISTORY
 # =============================
 with tab2:
 
@@ -240,16 +318,15 @@ with tab2:
         fields = item.get("fields", [])
 
         preview = pd.DataFrame([
-            {f["name"]: gen_value(f["name"]) for f in fields}
+            {f["name"]: gen_value(f["name"], f["type"]) for f in fields}
             for _ in range(3)
         ])
 
-        # optional display index (already safe now)
         preview.index = range(1, len(preview) + 1)
 
         st.dataframe(preview)
 
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3 = st.columns(3)
 
         with col1:
             st.download_button("⬇ CSV", preview.to_csv(index=False), f"{item['id']}.csv")
@@ -261,13 +338,6 @@ with tab2:
             buffer = io.BytesIO()
             preview.to_excel(buffer, index=False)
             buffer.seek(0)
-
             st.download_button("⬇ Excel", buffer, f"{item['id']}.xlsx")
-
-        # ✅ FIX: DELETE PER GRID (correct key + working rerun)
-        with col4:
-            if st.button("🗑 Delete", key=item["id"]):
-                storage.delete(item["id"])
-                st.rerun()
 
         st.markdown("---")
