@@ -5,12 +5,14 @@ import os
 import uuid
 import io
 import random
-import time
 from datetime import datetime
+from faker import Faker
 from openai import OpenAI
 
+fake = Faker()
+
 # -----------------------------
-# UI (DO NOT CHANGE)
+# UI (DO NOT TOUCH)
 # -----------------------------
 st.set_page_config(page_title="AI Data Generator", layout="wide")
 
@@ -95,7 +97,7 @@ class Storage:
 storage = Storage(DATA_FILE)
 
 # -----------------------------
-# SCHEMA EXTRACTION
+# SCHEMA (ONLY STRUCTURE)
 # -----------------------------
 def extract_schema(prompt):
 
@@ -104,6 +106,7 @@ Return ONLY JSON array:
 [
   {"name": "column"}
 ]
+No explanation.
 """
 
     res = client.chat.completions.create(
@@ -123,103 +126,72 @@ Return ONLY JSON array:
     return json.loads(content[start:end])
 
 # -----------------------------
-# 🚀 BULLETPROOF GENERATION ENGINE
+# 🚀 FINAL FAST GENERATION ENGINE
 # -----------------------------
 def generate(fields, rows, prompt):
 
-    system = """
-You are a strict dataset generator.
-
-Return ONLY valid JSON:
-{
-  "data": [
-    { "col": "value" }
-  ]
-}
-
-Rules:
-- exact row count
-- no extra keys
-- realistic values
-"""
-
-    last_error = None
-
-    # ---------------- RETRY LOOP ----------------
-    for attempt in range(3):
-
-        try:
-            res = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": f"""
-Prompt: {prompt}
-
-Columns:
-{json.dumps(fields)}
-
-Rows: {rows}
-
-Return JSON only.
-"""}
-                ],
-                temperature=0.3
-            )
-
-            content = res.choices[0].message.content
-            data = json.loads(content)
-
-            if isinstance(data, dict):
-                data = data.get("data", [])
-
-            if not isinstance(data, list):
-                raise ValueError("Invalid format")
-
-            if len(data) == 0:
-                raise ValueError("Empty output")
-
-            if len(data) > rows:
-                data = data[:rows]
-
-            df = pd.DataFrame(data)
-            df.index = range(1, len(df) + 1)
-
-            return df
-
-        except Exception as e:
-            last_error = str(e)
-            time.sleep(0.5)
-
-    # ---------------- FALLBACK (ZERO FAILURE GUARANTEE) ----------------
-    st.warning("AI failed → using fallback generator")
-
-    fallback = []
+    data = []
 
     for _ in range(rows):
+
         row = {}
 
+        name = fake.name()
+        first = name.split()[0].lower()
+
+        email = f"{first}{random.randint(10,999)}@gmail.com"
+        phone = f"+91-{random.randint(70000,99999)}-{random.randint(10000,99999)}"
+
         for f in fields:
-            name = f["name"].lower()
 
-            if "name" in name:
-                row[name] = "User_" + str(uuid.uuid4())[:4]
+            col = f["name"].lower()
 
-            elif "email" in name:
-                row[name] = f"user{random.randint(100,999)}@mail.com"
+            # ---------------- SMART RULE ENGINE ----------------
 
-            elif "phone" in name:
-                row[name] = f"+91-{random.randint(70000,99999)}-{random.randint(10000,99999)}"
+            if "name" in col:
+                row[col] = name
 
-            elif "id" in name:
-                row[name] = str(uuid.uuid4())[:10]
+            elif "email" in col:
+                row[col] = email
+
+            elif "phone" in col or "mobile" in col:
+                row[col] = phone
+
+            elif "address" in col or "city" in col:
+                row[col] = f"{fake.city()}, {fake.country()}"
+
+            elif "id" in col:
+                row[col] = str(uuid.uuid4())[:10]
+
+            elif "age" in col:
+                row[col] = random.randint(18, 60)
+
+            elif "salary" in col or "amount" in col or "price" in col:
+                row[col] = random.randint(30000, 200000)
+
+            elif "date" in col:
+                row[col] = fake.date_between("-3y", "today").isoformat()
+
+            elif "role" in col or "designation" in col:
+                row[col] = random.choice([
+                    "Software Engineer",
+                    "Data Analyst",
+                    "Product Manager",
+                    "HR Executive",
+                    "Consultant"
+                ])
+
+            elif "status" in col:
+                row[col] = random.choice([
+                    "Active", "Inactive", "Pending", "Completed"
+                ])
 
             else:
-                row[name] = "sample"
+                row[col] = fake.word()
 
-        fallback.append(row)
+        data.append(row)
 
-    df = pd.DataFrame(fallback)
+    df = pd.DataFrame(data)
     df.index = range(1, len(df) + 1)
 
     return df
