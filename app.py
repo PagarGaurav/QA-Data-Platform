@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 from faker import Faker
 import random
 import json
@@ -50,7 +49,7 @@ section[data-testid="stSidebar"] {
 st.title("🧠 AI Data Generator")
 
 # -----------------------------
-# API
+# OPENAI
 # -----------------------------
 api_key = st.sidebar.text_input("🔑 OpenAI API Key", type="password")
 client = OpenAI(api_key=api_key) if api_key else None
@@ -84,11 +83,6 @@ class Storage:
         data.append(item)
         self._write(data)
 
-    def delete(self, item_id):
-        data = self._read()
-        data = [x for x in data if x.get("id") != item_id]
-        self._write(data)
-
     def clear_all(self):
         self._write([])
 
@@ -98,51 +92,46 @@ class Storage:
 storage = Storage(DATA_FILE)
 
 # -----------------------------
-# LLM COLUMN INTENT MAPPING (NEW CORE ENGINE)
+# DOMAIN DETECTION (SAFE)
 # -----------------------------
-COLUMN_INTENT_CACHE = {}
+def detect_domain(prompt):
+    p = prompt.lower()
 
-def get_column_intents(schema, prompt):
+    if "login" in p or "auth" in p:
+        return "login"
+    if "bank" in p:
+        return "bank"
+    if "medical" in p:
+        return "medical"
+    return "generic"
 
-    cache_key = str(schema)
-
-    if cache_key in COLUMN_INTENT_CACHE:
-        return COLUMN_INTENT_CACHE[cache_key]
+# -----------------------------
+# OPENAI SCHEMA NORMALIZATION (ONLY PLACE OPENAI USED)
+# -----------------------------
+def get_schema_from_openai(prompt):
 
     system = """
-You are an enterprise data architect.
+You are a data architect.
 
-Given column names, map each column to a semantic intent type.
+Convert user request into structured dataset schema.
 
-Return ONLY JSON:
-{
-  "column_name": "semantic_type"
-}
+Return ONLY JSON array:
 
-Allowed semantic types:
-- id
-- email
-- phone
-- person_name
-- password
-- role
-- status
-- txn_type
-- balance
-- age
-- gender
-- diagnosis
-- date
-- numeric_small
-- numeric_large
-- text
+[
+  {"name": "column_name", "type": "one_of: id, email, phone, name, int, float, status, date, text, role, password"}
+]
+
+Rules:
+- no explanation
+- no extra text
+- clean column names only
 """
 
     res = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": system},
-            {"role": "user", "content": json.dumps(schema)}
+            {"role": "user", "content": prompt}
         ]
     )
 
@@ -152,160 +141,72 @@ Allowed semantic types:
     raw = re.sub(r"```", "", raw).strip()
 
     try:
-        intents = json.loads(raw)
+        start = raw.index("[")
+        end = raw.rindex("]") + 1
+        schema = json.loads(raw[start:end])
     except:
-        intents = {}
+        schema = [{"name": "id", "type": "id"},
+                  {"name": "name", "type": "name"}]
 
-    COLUMN_INTENT_CACHE[cache_key] = intents
-    return intents
-
-# -----------------------------
-# DOMAIN DETECTION
-# -----------------------------
-def detect_domain(prompt):
-    p = prompt.lower()
-
-    if "login" in p:
-        return "login"
-    if "bank" in p:
-        return "bank"
-    if "medical" in p:
-        return "medical"
-    return "generic"
+    return schema
 
 # -----------------------------
-# SCHEMA ENGINE (UNCHANGED)
+# VALUE ENGINE (STRICT + CORRECT)
 # -----------------------------
-def extract_schema(prompt):
+def gen_value(t):
 
-    domain = detect_domain(prompt)
-
-    if domain == "login":
-        return [
-            {"name": "email", "type": "email"},
-            {"name": "password", "type": "string"},
-            {"name": "role", "type": "string"},
-            {"name": "account_status", "type": "status"},
-            {"name": "login_attempts", "type": "int"}
-        ]
-
-    if domain == "bank":
-        return [
-            {"name": "customer_id", "type": "id"},
-            {"name": "balance", "type": "float"},
-            {"name": "txn_type", "type": "string"},
-            {"name": "status", "type": "status"}
-        ]
-
-    if domain == "medical":
-        return [
-            {"name": "patient_id", "type": "id"},
-            {"name": "patient_name", "type": "string"},
-            {"name": "age", "type": "int"},
-            {"name": "gender", "type": "string"},
-            {"name": "diagnosis", "type": "string"}
-        ]
-
-    return [
-        {"name": "id", "type": "id"},
-        {"name": "name", "type": "string"}
-    ]
-
-# -----------------------------
-# ENTERPRISE + LLM INTENT VALUE ENGINE
-# -----------------------------
-def gen_value(field, intent):
-
-    name = field["name"].lower()
-    semantic = intent.get(name, "text")
-
-    # -----------------------------
-    # ID
-    # -----------------------------
-    if semantic == "id":
+    if t == "id":
         return str(uuid.uuid4())[:10]
 
-    # -----------------------------
-    # EMAIL / PHONE
-    # -----------------------------
-    if semantic == "email":
+    if t == "email":
         return fake.email()
 
-    if semantic == "phone":
+    if t == "phone":
         return "+91" + str(random.randint(6000000000, 9999999999))
 
-    # -----------------------------
-    # PERSON
-    # -----------------------------
-    if semantic == "person_name":
+    if t == "name":
         return fake.name()
 
-    # -----------------------------
-    # LOGIN / SECURITY
-    # -----------------------------
-    if semantic == "role":
+    if t == "password":
+        return fake.password(length=10, special_chars=False)
+
+    if t == "role":
         return random.choice(["ADMIN", "USER", "MANAGER"])
 
-    if semantic == "status":
+    if t == "status":
         return random.choice(["ACTIVE", "INACTIVE", "BLOCKED", "PENDING"])
 
-    if semantic == "txn_type":
-        return random.choice(["DEBIT", "CREDIT"])
+    if t == "int":
+        return random.randint(1, 9999)
 
-    # -----------------------------
-    # MEDICAL
-    # -----------------------------
-    if semantic == "diagnosis":
-        return random.choice(["Diabetes", "Asthma", "Flu", "Infection", "Migraine"])
+    if t == "float":
+        return round(random.uniform(100, 100000), 2)
 
-    if semantic == "gender":
-        return random.choice(["MALE", "FEMALE", "OTHER"])
+    if t == "date":
+        return fake.date_this_year().isoformat()
 
-    if semantic == "age":
-        return random.randint(1, 95)
+    if t == "text":
+        return fake.word()
 
-    # -----------------------------
-    # NUMBERS
-    # -----------------------------
-    if semantic == "balance":
-        return round(random.uniform(100, 1000000), 2)
-
-    if semantic == "numeric_small":
-        return random.randint(1, 100)
-
-    if semantic == "numeric_large":
-        return random.randint(1000, 999999)
-
-    # -----------------------------
-    # DEFAULT TEXT
-    # -----------------------------
     return fake.word()
 
 # -----------------------------
-# GENERATOR (FAST + SCALABLE)
+# GENERATOR
 # -----------------------------
-MAX_CHUNK = 5000
-
-def generate_data(schema, rows, prompt):
-
-    intents = get_column_intents(schema, prompt)
+def generate(schema, rows):
 
     data = []
-    remaining = rows
 
-    while remaining > 0:
+    for _ in range(rows):
+        row = {}
+        for f in schema:
+            row[f["name"]] = gen_value(f["type"])
+        data.append(row)
 
-        batch = min(MAX_CHUNK, remaining)
+    df = pd.DataFrame(data)
+    df.index = range(1, len(df) + 1)
 
-        for _ in range(batch):
-            row = {}
-            for f in schema:
-                row[f["name"]] = gen_value(f, intents)
-            data.append(row)
-
-        remaining -= batch
-
-    return pd.DataFrame(data)
+    return df
 
 # -----------------------------
 # SESSION
@@ -313,11 +214,8 @@ def generate_data(schema, rows, prompt):
 if "df" not in st.session_state:
     st.session_state.df = None
 
-if "record" not in st.session_state:
-    st.session_state.record = None
-
 # -----------------------------
-# UI (UNCHANGED)
+# UI TABS (UNCHANGED)
 # -----------------------------
 tab1, tab2 = st.tabs(["🚀 Generate", "📂 History"])
 
@@ -329,44 +227,40 @@ with tab1:
     if st.button("Generate"):
 
         if not client:
-            st.error("Add OpenAI API key")
+            st.error("Please add OpenAI API key")
             st.stop()
 
-        schema = extract_schema(prompt)
-        df = generate_data(schema, rows, prompt)
+        schema = get_schema_from_openai(prompt)
+        df = generate(schema, rows)
 
         st.session_state.df = df
 
-        st.session_state.record = {
+        storage.add({
             "id": str(uuid.uuid4())[:8],
             "name": prompt[:40],
             "schema": schema,
             "created_at": str(datetime.now())
-        }
-
-        storage.add(st.session_state.record)
+        })
 
         st.success("Dataset generated")
 
     if st.session_state.df is not None:
 
-        df = st.session_state.df
-
-        st.dataframe(df, height=500)
+        st.dataframe(st.session_state.df, height=500)
 
         col1, col2 = st.columns(2)
 
         with col1:
             st.download_button(
                 "⬇ CSV",
-                df.to_csv(index=False),
-                file_name=f"data_{len(df)}.csv"
+                st.session_state.df.to_csv(index=False),
+                file_name="data.csv"
             )
 
         with col2:
             st.download_button(
                 "⬇ JSON",
-                df.to_json(orient="records"),
+                st.session_state.df.to_json(orient="records"),
                 file_name="data.json"
             )
 
@@ -381,11 +275,7 @@ with tab2:
     for item in reversed(data):
 
         st.markdown(f"""
-        <div style="
-            background:#111827;
-            padding:12px;
-            border-radius:12px;
-            margin-bottom:10px;">
+        <div style="background:#111827;padding:12px;border-radius:12px;margin-bottom:10px;">
             <h4 style="color:white;">📦 {item.get('name')}</h4>
         </div>
         """, unsafe_allow_html=True)
@@ -393,7 +283,7 @@ with tab2:
         schema = item.get("schema", [])
 
         preview = pd.DataFrame([
-            {f["name"]: fake.word() for f in schema}
+            {f["name"]: gen_value(f["type"]) for f in schema}
             for _ in range(3)
         ])
 
