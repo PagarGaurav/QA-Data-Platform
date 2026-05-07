@@ -12,7 +12,7 @@ from openai import OpenAI
 fake = Faker()
 
 # -----------------------------
-# UI (NO CHANGE)
+# UI (UNCHANGED)
 # -----------------------------
 st.set_page_config(page_title="AI Data Generator", layout="wide")
 
@@ -51,16 +51,14 @@ st.title("🧠 AI Data Generator")
 # -----------------------------
 # CONFIG
 # -----------------------------
-STRICT_MODE = True
-
 api_key = st.sidebar.text_input("🔑 OpenAI API Key", type="password")
 client = OpenAI(api_key=api_key) if api_key else None
+
+DATA_FILE = "storage.json"
 
 # -----------------------------
 # STORAGE
 # -----------------------------
-DATA_FILE = "storage.json"
-
 class Storage:
     def __init__(self, file):
         self.file = file
@@ -99,37 +97,27 @@ class Storage:
 storage = Storage(DATA_FILE)
 
 # -----------------------------
-# DOMAIN DETECTION
-# -----------------------------
-def detect_domain(text):
-    t = text.lower()
-
-    if "student" in t or "school" in t or "college" in t:
-        return "student"
-
-    return "generic"
-
-# -----------------------------
-# OPENAI SCHEMA
+# SCHEMA FROM OPENAI (FULLY DYNAMIC)
 # -----------------------------
 def extract_schema(prompt):
 
-    if STRICT_MODE and not client:
-        st.error("❌ API key required")
+    if not client:
+        st.error("API key required")
         st.stop()
 
-    domain = detect_domain(prompt)
+    system = """
+You are a dataset schema generator.
 
-    system = f"""
-You are a STRICT enterprise schema generator.
-
-Detected domain: {domain}
+Return ONLY JSON array like:
+[
+  {"name": "any_column_name", "type": "name|email|phone|address|pincode|id|int|float|date|string|status"}
+]
 
 Rules:
-- Output ONLY JSON array
-- Allowed types: id, name, email, phone, address, pincode, status, int, float, date, string
-- For student domain include: student_name, roll_no, std, email, phone
-- Never return empty schema
+- You can create ANY column names based on user request
+- Do NOT restrict domain
+- Only ensure correct type assignment
+- No explanation
 """
 
     res = client.chat.completions.create(
@@ -147,63 +135,72 @@ Rules:
         end = content.rindex("]") + 1
         return json.loads(content[start:end])
     except:
-        st.error("❌ Schema parse failed")
+        st.error("Schema parsing failed")
         st.stop()
 
 # -----------------------------
-# VALIDATION (NO DATA LOSS)
+# VALIDATION (TYPE ONLY, NO COLUMN LOSS)
 # -----------------------------
 def validate_schema(schema):
 
-    allowed = {
-        "id","student_name","first_name","last_name","full_name",
-        "email","phone","address","pincode","status",
-        "roll_no","std",
-        "int","float","date","string"
+    allowed_types = {
+        "name","email","phone","address","pincode",
+        "id","int","float","date","string","status"
     }
 
     clean = []
-    seen = set()
 
     for f in schema:
-        name = f.get("name","").lower()
 
-        if name not in allowed:
-            continue
+        name = f.get("name","col").strip().lower()
+        t = f.get("type","string").strip().lower()
 
-        if name in seen:
-            continue
+        if t not in allowed_types:
+            t = "string"
 
-        seen.add(name)
-        clean.append(f)
+        clean.append({"name": name, "type": t})
 
     return clean
 
 # -----------------------------
-# STUDENT GUARANTEE LAYER (KEY FIX)
+# VALUE ENGINE (TYPE BASED ONLY)
 # -----------------------------
-def enforce_student_schema(fields, prompt):
+def gen_value(t, col_name):
 
-    if "student" in prompt.lower():
+    if t == "email":
+        return fake.email()
 
-        required = [
-            {"name": "student_name", "type": "name"},
-            {"name": "email", "type": "email"},
-            {"name": "phone", "type": "phone"},
-            {"name": "roll_no", "type": "id"},
-            {"name": "std", "type": "string"}
-        ]
+    if t == "phone":
+        return "+91" + str(random.randint(6000000000, 9999999999))
 
-        existing = {f["name"] for f in fields}
+    if t == "address":
+        return fake.address().replace("\n", ", ")
 
-        for r in required:
-            if r["name"] not in existing:
-                fields.append(r)
+    if t == "pincode":
+        return random.randint(100000, 999999)
 
-    return fields
+    if t == "name":
+        return fake.name()
+
+    if t == "id":
+        return str(uuid.uuid4())[:10]
+
+    if t == "int":
+        return random.randint(1, 9999)
+
+    if t == "float":
+        return round(random.uniform(100, 100000), 2)
+
+    if t == "date":
+        return fake.date_this_year().isoformat()
+
+    if t == "status":
+        return random.choice(["ACTIVE","INACTIVE","PENDING","BLOCKED"])
+
+    return fake.word()
 
 # -----------------------------
-# GENERATION ENGINE (CONSISTENT)
+# GENERATOR
 # -----------------------------
 def generate(fields, rows):
 
@@ -211,56 +208,10 @@ def generate(fields, rows):
 
     for _ in range(rows):
 
-        first = fake.first_name()
-        last = fake.last_name()
-        full = f"{first} {last}"
-        email = f"{first.lower()}.{last.lower()}@gmail.com"
-
         row = {}
 
         for f in fields:
-
-            n = f["name"].lower()
-            t = f["type"]
-
-            if "student_name" in n or "name" in n:
-                row[f["name"]] = full
-
-            elif "email" in n:
-                row[f["name"]] = email
-
-            elif "phone" in n:
-                row[f["name"]] = "+91" + str(random.randint(6000000000, 9999999999))
-
-            elif "roll_no" in n:
-                row[f["name"]] = random.randint(1000, 99999)
-
-            elif "std" in n:
-                row[f["name"]] = random.choice(["1st","2nd","3rd","4th","5th","6th","7th","8th","9th","10th","11th","12th"])
-
-            elif "address" in n:
-                row[f["name"]] = fake.address().replace("\n", ", ")
-
-            elif "pincode" in n:
-                row[f["name"]] = random.randint(100000, 999999)
-
-            elif "id" in n:
-                row[f["name"]] = str(uuid.uuid4())[:10]
-
-            elif "status" in n:
-                row[f["name"]] = random.choice(["ACTIVE","INACTIVE","PENDING","BLOCKED"])
-
-            elif t == "int":
-                row[f["name"]] = random.randint(1, 9999)
-
-            elif t == "float":
-                row[f["name"]] = round(random.uniform(100, 100000), 2)
-
-            elif t == "date":
-                row[f["name"]] = fake.date_this_year().isoformat()
-
-            else:
-                row[f["name"]] = fake.word()
+            row[f["name"]] = gen_value(f["type"], f["name"])
 
         data.append(row)
 
@@ -276,7 +227,7 @@ if "df" not in st.session_state:
     st.session_state.df = None
 
 # -----------------------------
-# UI TABS (UNCHANGED)
+# TABS (UNCHANGED UI)
 # -----------------------------
 tab1, tab2 = st.tabs(["🚀 Generate", "📂 History"])
 
@@ -287,17 +238,16 @@ with tab1:
 
     if st.button("Generate"):
 
-        fields = extract_schema(prompt)
-        fields = validate_schema(fields)
-        fields = enforce_student_schema(fields, prompt)
+        schema = extract_schema(prompt)
+        schema = validate_schema(schema)
 
-        df = generate(fields, rows)
+        df = generate(schema, rows)
         st.session_state.df = df
 
         storage.add({
             "id": str(uuid.uuid4())[:8],
             "name": prompt[:40],
-            "fields": fields,
+            "fields": schema,
             "created_at": str(datetime.now())
         })
 
@@ -310,16 +260,16 @@ with tab1:
         col1, col2, col3 = st.columns(3)
 
         with col1:
-            st.download_button("⬇ CSV", st.session_state.df.to_csv(index=False), "data.csv")
+            st.download_button("CSV", st.session_state.df.to_csv(index=False), "data.csv")
 
         with col2:
-            st.download_button("⬇ JSON", st.session_state.df.to_json(orient="records"), "data.json")
+            st.download_button("JSON", st.session_state.df.to_json(orient="records"), "data.json")
 
         with col3:
             buffer = io.BytesIO()
             st.session_state.df.to_excel(buffer, index=False)
             buffer.seek(0)
-            st.download_button("⬇ Excel", buffer, "data.xlsx")
+            st.download_button("Excel", buffer, "data.xlsx")
 
 with tab2:
 
