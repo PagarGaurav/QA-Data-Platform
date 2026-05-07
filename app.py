@@ -131,7 +131,15 @@ def fetch_products(search_query):
         title = item.get("title", "")
         price = item.get("price", "")
         source = item.get("source", "")
-        link = item.get("link", "")
+
+        # =================================================
+        # REAL PRODUCT URL
+        # =================================================
+        link = item.get("product_link", "")
+
+        if not link:
+            link = item.get("link", "")
+
         thumbnail = item.get("thumbnail", "")
         rating = item.get("rating", "")
         reviews = item.get("reviews", "")
@@ -251,6 +259,7 @@ if st.button("Compare Prices"):
                 st.markdown(
                     f"""
                     <a href="{row['Link']}" target="_blank"
+                       rel="noopener noreferrer"
                        style="text-decoration:none;color:white;">
                        <h3>{row['Product']}</h3>
                     </a>
@@ -272,12 +281,16 @@ if st.button("Compare Prices"):
                 if row["price_num"] == min_price:
                     st.success("🏆 Cheapest Deal")
 
-                # CLICKABLE BUY BUTTON
+                # =================================================
+                # BUY BUTTON
+                # =================================================
                 if row["Link"]:
 
                     st.markdown(
                         f"""
-                        <a href="{row['Link']}" target="_blank">
+                        <a href="{row['Link']}"
+                           target="_blank"
+                           rel="noopener noreferrer">
                             <button style="
                                 background: linear-gradient(90deg,#6366f1,#3b82f6);
                                 color:white;
