@@ -115,12 +115,24 @@ def fetch_products(search_query):
         timeout=30
     )
 
+    # =====================================================
+    # API ERROR HANDLING
+    # =====================================================
+    if response.status_code != 200:
+        raise Exception("SerpAPI request failed")
+
     data = response.json()
+
+    # =====================================================
+    # SERPAPI ERROR
+    # =====================================================
+    if "error" in data:
+        raise Exception(data["error"])
 
     shopping_results = data.get("shopping_results", [])
 
     # =====================================================
-    # APPLY MAX PRODUCT LIMIT MANUALLY
+    # LIMIT PRODUCTS
     # =====================================================
     shopping_results = shopping_results[:max_products]
 
@@ -133,19 +145,14 @@ def fetch_products(search_query):
         source = item.get("source", "")
 
         # =================================================
-        # BEST URL SELECTION
+        # BEST AVAILABLE LINK
         # =================================================
-        link = (
-            item.get("offers_link")
-            or item.get("product_link")
-            or item.get("link")
-            or ""
-        )
+        link = item.get("product_link")
 
-        # =================================================
-        # SKIP BAD GOOGLE LINKS
-        # =================================================
-        if "google.com" in link:
+        if not link:
+            link = item.get("link")
+
+        if not link:
             continue
 
         thumbnail = item.get("thumbnail", "")
@@ -194,7 +201,7 @@ if st.button("Compare Prices"):
     # NO PRODUCTS
     # =====================================================
     if not products:
-        st.error("No valid products found")
+        st.error("No products found")
         st.stop()
 
     # =====================================================
@@ -208,14 +215,14 @@ if st.button("Compare Prices"):
     df["price_num"] = df["Price"].apply(extract_price)
 
     # =====================================================
-    # SORT
+    # SORT BY CHEAPEST
     # =====================================================
     df = df.sort_values("price_num")
 
     # =====================================================
     # SUMMARY
     # =====================================================
-    st.success(f"Found {len(df)} real products")
+    st.success(f"Found {len(df)} products")
 
     cheapest_price = df.iloc[0]["Price"]
     cheapest_platform = df.iloc[0]["Platform"]
@@ -266,6 +273,7 @@ if st.button("Compare Prices"):
                 f"""
                 <a href="{row['Link']}"
                    target="_blank"
+                   rel="noopener noreferrer"
                    style="text-decoration:none;color:white;">
                     <h3>{row['Product']}</h3>
                 </a>
@@ -292,30 +300,26 @@ if st.button("Compare Prices"):
             # =================================================
             # BUY BUTTON
             # =================================================
-            if row["Link"]:
-
-                st.markdown(
-                    f"""
-                    <a href="{row['Link']}"
-                       target="_blank"
-                       rel="noopener noreferrer">
-
-                        <button style="
-                            background: linear-gradient(90deg,#6366f1,#3b82f6);
-                            color:white;
-                            border:none;
-                            padding:10px 18px;
-                            border-radius:10px;
-                            cursor:pointer;
-                            font-weight:600;
-                        ">
-                            🛒 Buy Now
-                        </button>
-
-                    </a>
-                    """,
-                    unsafe_allow_html=True
-                )
+            st.markdown(
+                f"""
+                <a href="{row['Link']}"
+                   target="_blank"
+                   rel="noopener noreferrer">
+                    <button style="
+                        background: linear-gradient(90deg,#6366f1,#3b82f6);
+                        color:white;
+                        border:none;
+                        padding:10px 18px;
+                        border-radius:10px;
+                        cursor:pointer;
+                        font-weight:600;
+                    ">
+                        🛒 Buy Now
+                    </button>
+                </a>
+                """,
+                unsafe_allow_html=True
+            )
 
         st.markdown("</div>", unsafe_allow_html=True)
 
