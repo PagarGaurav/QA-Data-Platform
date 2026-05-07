@@ -83,21 +83,13 @@ class Storage:
         data.append(item)
         self._write(data)
 
-    def delete(self, item_id):
-        data = self._read()
-        data = [x for x in data if x.get("id") != item_id]
-        self._write(data)
-
-    def clear_all(self):
-        self._write([])
-
     def get_all(self):
         return self._read()
 
 storage = Storage(DATA_FILE)
 
 # -----------------------------
-# SCHEMA (PURE UNIVERSAL - NO DOMAIN LOGIC)
+# SCHEMA EXTRACTION
 # -----------------------------
 def extract_schema(prompt):
 
@@ -106,17 +98,14 @@ def extract_schema(prompt):
         st.stop()
 
     system = """
-You generate dataset schema.
-
 Return ONLY JSON array:
 [
   {"name": "column_name", "type": "name|email|phone|id|address|number|date|text"}
 ]
 
 Rules:
-- DO NOT assume any domain (no student/HR/bank logic)
-- ONLY infer structure from prompt
-- Keep it minimal but valid
+- No assumptions about domain
+- Only infer structure
 """
 
     res = client.chat.completions.create(
@@ -138,19 +127,15 @@ Rules:
         st.stop()
 
 # -----------------------------
-# VALIDATION (TYPE ONLY, NO COLUMN FILTERING)
+# VALIDATION
 # -----------------------------
 def validate_schema(schema):
 
-    allowed_types = {
-        "name","email","phone","id",
-        "address","number","date","text"
-    }
+    allowed_types = {"name","email","phone","id","address","number","date","text"}
 
     clean = []
 
     for f in schema:
-
         name = f.get("name","col").strip().lower()
         t = f.get("type","text").strip().lower()
 
@@ -162,54 +147,60 @@ def validate_schema(schema):
     return clean
 
 # -----------------------------
-# UNIVERSAL GENERATION ENGINE
+# 🔥 FIXED UNIVERSAL GENERATION ENGINE
 # -----------------------------
 def generate(fields, rows):
 
-    data = []
+    if not client:
+        st.error("API key required for generation")
+        st.stop()
 
-    for _ in range(rows):
+    system = f"""
+You are a strict dataset generator.
 
-        # consistent identity per row
-        base_name = fake.name()
-        base_email = fake.email()
-        base_phone = "+91" + str(random.randint(6000000000, 9999999999))
-        base_address = fake.address().replace("\n", ", ")
+Return ONLY valid JSON array of {rows} objects.
 
-        row = {}
+RULES:
+- EXACT columns only: {[f['name'] for f in fields]}
+- Follow types strictly:
+{json.dumps(fields)}
 
+STRICT:
+- No extra columns
+- No missing values
+- No nulls
+- Fully realistic data based on prompt
+"""
+
+    prompt = st.session_state.get("last_prompt","")
+
+    res = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt}
+        ],
+        temperature=0.7
+    )
+
+    content = res.choices[0].message.content
+
+    try:
+        data = json.loads(content)
+    except:
+        st.error("Invalid JSON from model")
+        st.stop()
+
+    # enforce schema safety
+    clean_data = []
+
+    for row in data:
+        clean_row = {}
         for f in fields:
+            clean_row[f["name"]] = row.get(f["name"], "")
+        clean_data.append(clean_row)
 
-            t = f["type"]
-            n = f["name"]
-
-            if t == "name":
-                row[n] = base_name
-
-            elif t == "email":
-                row[n] = base_email
-
-            elif t == "phone":
-                row[n] = base_phone
-
-            elif t == "address":
-                row[n] = base_address
-
-            elif t == "id":
-                row[n] = str(uuid.uuid4())[:10]
-
-            elif t == "number":
-                row[n] = random.randint(1, 99999)
-
-            elif t == "date":
-                row[n] = fake.date_this_year().isoformat()
-
-            else:
-                row[n] = fake.word()
-
-        data.append(row)
-
-    df = pd.DataFrame(data)
+    df = pd.DataFrame(clean_data)
     df.index = range(1, len(df) + 1)
 
     return df
@@ -221,7 +212,7 @@ if "df" not in st.session_state:
     st.session_state.df = None
 
 # -----------------------------
-# TABS (UNCHANGED UI)
+# TABS
 # -----------------------------
 tab1, tab2 = st.tabs(["🚀 Generate", "📂 History"])
 
@@ -234,6 +225,8 @@ with tab1:
     rows = st.number_input("📊 Rows", min_value=1, value=10)
 
     if st.button("Generate"):
+
+        st.session_state["last_prompt"] = prompt  # 🔥 IMPORTANT FIX
 
         schema = extract_schema(prompt)
         schema = validate_schema(schema)
