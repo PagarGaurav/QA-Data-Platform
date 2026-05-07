@@ -99,25 +99,53 @@ class Storage:
 storage = Storage(DATA_FILE)
 
 # -----------------------------
-# OPENAI SCHEMA (STRICT NO-GARBAGE)
+# DOMAIN DETECTION
+# -----------------------------
+def detect_domain(text):
+
+    t = text.lower()
+
+    if any(k in t for k in ["student", "school", "college", "marks", "class"]):
+        return "student"
+
+    if any(k in t for k in ["employee", "hr", "salary", "payroll", "job"]):
+        return "hr"
+
+    if any(k in t for k in ["bank", "account", "loan", "transaction"]):
+        return "bank"
+
+    if any(k in t for k in ["doctor", "patient", "hospital", "medical"]):
+        return "health"
+
+    return "generic"
+
+# -----------------------------
+# OPENAI SCHEMA (DOMAIN AWARE)
 # -----------------------------
 def extract_schema(prompt):
 
     if STRICT_MODE and not client:
-        st.error("❌ STRICT MODE: API key required")
+        st.error("❌ API key required")
         st.stop()
 
-    system = """
-You are a STRICT enterprise schema generator.
+    domain = detect_domain(prompt)
 
-ONLY allowed columns:
-id, first_name, last_name, full_name,
-email, phone, address, pincode, status
+    system = f"""
+You are a domain-aware enterprise schema generator.
+
+Detected domain: {domain}
 
 Rules:
-- No new columns allowed
-- No explanation
 - Output ONLY JSON array
+- Allowed types: id, name, email, phone, address, pincode, status, int, float, date, string
+
+Domain hints:
+- student → student_name, roll_number, class, marks, grade
+- hr → employee_name, employee_id, department, salary
+- bank → account_number, balance, transaction_id
+- health → patient_name, disease, doctor_name
+
+Do NOT return empty schema.
 """
 
     res = client.chat.completions.create(
@@ -135,17 +163,20 @@ Rules:
         end = content.rindex("]") + 1
         return json.loads(content[start:end])
     except:
-        st.error("❌ Invalid schema from OpenAI")
+        st.error("❌ Schema parsing failed")
         st.stop()
 
 # -----------------------------
-# VALIDATION (HARD WHITELIST)
+# VALIDATION (NO BLANK GUARANTEE)
 # -----------------------------
 def validate_schema(schema):
 
     allowed = {
         "id","first_name","last_name","full_name",
-        "email","phone","address","pincode","status"
+        "name","student_name","employee_name","patient_name",
+        "roll_number","class","marks","grade",
+        "email","phone","address","pincode","status",
+        "salary","int","float","date","string"
     }
 
     clean = []
@@ -156,7 +187,6 @@ def validate_schema(schema):
         name = str(f.get("name","")).strip().lower()
         t = str(f.get("type","string")).strip().lower()
 
-        # ❌ DROP EVERYTHING NOT ALLOWED
         if name not in allowed:
             continue
 
@@ -167,10 +197,18 @@ def validate_schema(schema):
 
         clean.append({"name": name, "type": t})
 
+    # 🔥 NEVER ALLOW EMPTY SCHEMA
+    if not clean:
+        clean = [
+            {"name": "name", "type": "name"},
+            {"name": "email", "type": "email"},
+            {"name": "phone", "type": "phone"}
+        ]
+
     return clean
 
 # -----------------------------
-# CONSISTENT GENERATION ENGINE
+# CONSISTENT ROW ENGINE
 # -----------------------------
 def generate(fields, rows):
 
@@ -180,8 +218,8 @@ def generate(fields, rows):
 
         first = fake.first_name()
         last = fake.last_name()
+        full = f"{first} {last}"
 
-        full_name = f"{first} {last}"
         email = f"{first.lower()}.{last.lower()}@gmail.com"
         address = fake.address().replace("\n", ", ")
         pincode = random.randint(100000, 999999)
@@ -193,31 +231,38 @@ def generate(fields, rows):
             n = f["name"].lower()
             t = f["type"]
 
-            if n == "first_name":
+            # identity consistency
+            if "student_name" in n or "employee_name" in n or "patient_name" in n or "name" in n:
+                row[f["name"]] = full
+
+            elif "first" in n:
                 row[f["name"]] = first
 
-            elif n == "last_name":
+            elif "last" in n:
                 row[f["name"]] = last
 
-            elif n == "full_name":
-                row[f["name"]] = full_name
-
-            elif n == "email":
+            elif "email" in n:
                 row[f["name"]] = email
 
-            elif n == "phone":
+            elif "phone" in n:
                 row[f["name"]] = "+91" + str(random.randint(6000000000, 9999999999))
 
-            elif n == "address":
+            elif "address" in n:
                 row[f["name"]] = address
 
-            elif n == "pincode":
+            elif "pincode" in n:
                 row[f["name"]] = pincode
 
-            elif n == "id":
+            elif "id" in n or "roll" in n or "account" in n:
                 row[f["name"]] = str(uuid.uuid4())[:10]
 
-            elif n == "status":
+            elif "marks" in n:
+                row[f["name"]] = random.randint(35, 100)
+
+            elif "salary" in n:
+                row[f["name"]] = random.randint(20000, 200000)
+
+            elif "status" in n:
                 row[f["name"]] = random.choice(["ACTIVE","INACTIVE","PENDING","BLOCKED"])
 
             elif t == "int":
@@ -236,7 +281,6 @@ def generate(fields, rows):
 
     df = pd.DataFrame(data)
 
-    # INDEX START FROM 1 (FIXED)
     df.index = range(1, len(df) + 1)
 
     return df
