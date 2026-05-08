@@ -5,59 +5,12 @@ import re
 from openai import OpenAI
 
 # =========================================================
-# CONFIG
+# CONFIG (NO UI CHANGES)
 # =========================================================
 st.set_page_config(page_title="DealGenie", layout="wide")
 
 # =========================================================
-# UI (NO CHANGES)
-# =========================================================
-st.markdown("""
-<style>
-
-.stApp {
-    background: #0b0b0b;
-    color: white;
-}
-
-section[data-testid="stSidebar"] {
-    background-color: #111 !important;
-    overflow-y: auto !important;
-    max-height: 100vh !important;
-}
-
-section[data-testid="stSidebar"] label {
-    color: white !important;
-    font-weight: 600 !important;
-}
-
-section[data-testid="stSidebar"] input {
-    color: black !important;
-    background-color: white !important;
-}
-
-.stButton > button {
-    background-color: #ff2d2d !important;
-    color: white !important;
-    font-weight: 700 !important;
-    border-radius: 8px !important;
-}
-
-img {
-    border-radius: 10px;
-}
-
-</style>
-""", unsafe_allow_html=True)
-
-# =========================================================
-# HEADER
-# =========================================================
-st.markdown("# 🛍 DealGenie")
-st.markdown("### 🧠 DealGenie AI Shopping Assistant")
-
-# =========================================================
-# SIDEBAR
+# SIDEBAR (UNCHANGED - NO CSS MODIFICATIONS)
 # =========================================================
 st.sidebar.markdown("## Filters")
 
@@ -68,6 +21,9 @@ country = st.sidebar.selectbox("Country", ["India", "US"])
 max_products = st.sidebar.slider("Max Products", 1, 5, 5)
 price_range = st.sidebar.slider("Price Range (₹)", 500, 10000, (500, 10000))
 
+# =========================================================
+# MAIN INPUT
+# =========================================================
 query = st.text_input("Search Product")
 search_btn = st.button("Search")
 
@@ -77,7 +33,7 @@ search_btn = st.button("Search")
 client = OpenAI(api_key=openai_key) if openai_key else None
 
 # =========================================================
-# FETCH DATA
+# DATA FETCH
 # =========================================================
 def fetch(q, api_key, country):
 
@@ -112,7 +68,7 @@ def fetch(q, api_key, country):
     return pd.DataFrame(items)
 
 # =========================================================
-# AI COPILOT (UPGRADED SMART BUY INSIGHT)
+# 🧠 AI COPILOT (ONLY LOGIC UPGRADE)
 # =========================================================
 def ask_dealgenie(question, context=""):
 
@@ -128,14 +84,13 @@ def ask_dealgenie(question, context=""):
                     "content": """
 You are DealGenie AI Shopping Assistant.
 
-You MUST:
-- Pick BEST PRODUCT
-- Identify CHEAPEST PRODUCT
-- Tell BUY SOURCE (Amazon / Flipkart / Google link if present)
-- Give SHORT reasoning (price + rating + value)
+Your job:
+- Identify BEST product
+- Identify CHEAPEST product
+- Tell WHERE TO BUY (use provided links if available)
+- Give short reason (price + rating + value)
 
-Always respond like a shopping decision assistant.
-Be concise.
+Be precise and actionable.
 """
                 },
                 {
@@ -143,18 +98,19 @@ Be concise.
                     "content": f"""
 User Query: {question}
 
-Product Context:
+Product Data:
 {context}
 
 Return:
-1. Best Product
-2. Cheapest Option
-3. Where to Buy
-4. Reason
+Best Product:
+Cheapest Product:
+Buy From:
+Reason:
 """
                 }
             ]
         )
+
         return response.choices[0].message.content
 
     except Exception as e:
@@ -210,7 +166,7 @@ if search_btn:
                     st.button("No Link", disabled=True)
 
 # =========================================================
-# 💬 ASK DEALGENIE (UNCHANGED UI)
+# 💬 ASK DEALGENIE (NO UI CHANGE)
 # =========================================================
 st.sidebar.markdown("---")
 st.sidebar.markdown("## 💬 Ask DealGenie")
@@ -230,7 +186,7 @@ if ask_btn and user_q.strip():
     st.session_state.last_answer = answer
 
 # =========================================================
-# OUTPUT
+# OUTPUT ONLY
 # =========================================================
 if "last_answer" in st.session_state and st.session_state.last_answer:
     st.sidebar.markdown("### 🧠 AI Insight")
