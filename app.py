@@ -9,7 +9,7 @@ import re
 st.set_page_config(page_title="DealGenie", layout="wide")
 
 # =========================================================
-# STYLE (CLEAN + FIXED)
+# STYLE (SAFE - NO BROKEN DIVS)
 # =========================================================
 st.markdown("""
 <style>
@@ -30,34 +30,18 @@ st.markdown("""
     margin-bottom:20px;
 }
 
-/* PRODUCT CARD (FIXED EQUAL HEIGHT) */
-.product-card {
+/* CARD STYLE */
+.card {
     background:#111;
     border-radius:14px;
     padding:12px;
     border:1px solid #222;
     height:520px;
-    display:flex;
-    flex-direction:column;
-    justify-content:space-between;
 }
 
-/* IMAGE */
-.img-box {
-    width:100%;
-    height:220px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    background:#1a1a1a;
+/* IMAGE FIX */
+img {
     border-radius:10px;
-    overflow:hidden;
-}
-
-.img-box img {
-    max-height:100%;
-    max-width:100%;
-    object-fit:contain;
 }
 
 /* BUY BUTTON */
@@ -68,7 +52,6 @@ st.markdown("""
     border-radius:8px;
     font-weight:700;
     text-decoration:none;
-    display:inline-block;
 }
 
 /* SEARCH BUTTON */
@@ -77,17 +60,6 @@ st.markdown("""
     color:white;
     font-weight:800;
     border-radius:10px;
-}
-
-/* RATING */
-.rating {
-    color:#ffd700;
-    font-weight:700;
-}
-
-.small {
-    font-size:12px;
-    color:#bbb;
 }
 
 </style>
@@ -142,7 +114,7 @@ def fetch(q, api_key, country):
             "Product": x.get("title"),
             "Price": price_text,
             "PriceNum": price_num,
-            "Link": x.get("link") or x.get("product_link") or "",
+            "Link": x.get("product_link") or x.get("link") or "",
             "Image": x.get("thumbnail"),
             "Rating": x.get("rating"),
             "Reviews": x.get("reviews")
@@ -160,16 +132,7 @@ def score(row):
     return 1 / (row["PriceNum"] + 1)
 
 # =========================================================
-# BUY BUTTON
-# =========================================================
-def safe_buy(url, key):
-    if url:
-        st.link_button("🛒 Buy Now", url, key=f"buy_{key}")
-    else:
-        st.button("No Link Available", disabled=True, key=f"no_{key}")
-
-# =========================================================
-# MAIN
+# MAIN UI
 # =========================================================
 if st.button("🔎 Search Product"):
 
@@ -189,36 +152,39 @@ if st.button("🔎 Search Product"):
 
     st.markdown("## 🔥 Best Deals")
 
-    cols = st.columns(3)
+    df = df.reset_index(drop=True)
 
-    for i, r in df.iterrows():
+    # =====================================================
+    # SAFE GRID (NO BLACK BOX ISSUE)
+    # =====================================================
+    for i in range(0, len(df), 3):
 
-        with cols[i % 3]:
+        row = df.iloc[i:i+3]
+        cols = st.columns(3)
 
-            st.markdown('<div class="product-card">', unsafe_allow_html=True)
+        for col, (_, r) in zip(cols, row.iterrows()):
 
-            img = r["Image"] if r["Image"] else "https://via.placeholder.com/300"
+            with col:
 
-            st.markdown(f"""
-            <div class="img-box">
-                <img src="{img}">
-            </div>
-            """, unsafe_allow_html=True)
+                st.markdown('<div class="card">', unsafe_allow_html=True)
 
-            st.markdown(f"**{str(r['Product'])[:60]}**")
+                img = r["Image"] if r["Image"] else "https://via.placeholder.com/300"
 
-            st.write(f"💰 {r['Price']}")
+                st.image(img, use_container_width=True)
 
-            # Rating
-            rating = r.get("Rating")
-            reviews = r.get("Reviews")
+                st.markdown(f"**{str(r['Product'])[:60]}**")
 
-            if rating:
-                st.markdown(f"<div class='rating'>⭐ {rating} / 5</div>", unsafe_allow_html=True)
+                st.write(f"💰 {r['Price']}")
 
-            if reviews:
-                st.markdown(f"<div class='small'>{reviews} reviews</div>", unsafe_allow_html=True)
+                if r.get("Rating"):
+                    st.write(f"⭐ {r['Rating']} / 5")
 
-            safe_buy(r["Link"], i)
+                if r.get("Reviews"):
+                    st.caption(f"{r['Reviews']} reviews")
 
-            st.markdown('</div>', unsafe_allow_html=True)
+                if r["Link"]:
+                    st.link_button("🛒 Buy Now", r["Link"])
+                else:
+                    st.button("No Link Available", disabled=True)
+
+                st.markdown('</div>', unsafe_allow_html=True)
