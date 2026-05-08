@@ -23,15 +23,17 @@ st.markdown("""
 
 /* HERO */
 .hero {
-    background: linear-gradient(90deg, rgba(0,0,0,0.85), rgba(0,0,0,0.4)),
+    background:
+    linear-gradient(90deg, rgba(0,0,0,0.88), rgba(0,0,0,0.45)),
     url('https://images.unsplash.com/photo-1607082350899-7e105aa886ae');
     background-size:cover;
+    background-position:center;
     padding:60px;
     border-radius:20px;
     margin-bottom:20px;
 }
 
-/* CARD STYLE */
+/* PRODUCT CARD */
 .card {
     background:#111;
     border-radius:14px;
@@ -40,68 +42,70 @@ st.markdown("""
     height:520px;
 }
 
-/* IMAGE FIX */
+/* IMAGES */
 img {
     border-radius:10px;
-}
-
-/* BUY BUTTON */
-.stLinkButton a {
-    background-color:#ff2d2d !important;
-    color:white !important;
-    padding:8px 12px;
-    border-radius:8px;
-    font-weight:700;
-    text-decoration:none;
 }
 
 /* SEARCH BUTTON */
 .stButton > button {
     background:#ff2d2d !important;
     color:white !important;
-    font-weight:800;
-    border-radius:10px;
-    border:none;
+    font-weight:800 !important;
+    border:none !important;
+    border-radius:10px !important;
+}
+
+/* BUY BUTTON */
+.stLinkButton a {
+    background:#ff2d2d !important;
+    color:white !important;
+    border-radius:8px !important;
+    padding:8px 12px !important;
+    text-decoration:none !important;
+    font-weight:700 !important;
 }
 
 /* =======================================================
 SIDEBAR BLACK THEME
 ======================================================= */
 
-section[data-testid="stSidebar"] {
+section[data-testid="stSidebar"]{
     background:#000 !important;
 }
 
-/* TEXT */
-section[data-testid="stSidebar"] * {
+/* ALL SIDEBAR TEXT */
+section[data-testid="stSidebar"] *{
     color:white !important;
 }
 
-/* INPUT */
-section[data-testid="stSidebar"] input {
-    background:#111 !important;
+/* INPUT BOX */
+section[data-testid="stSidebar"] input{
+    background-color:#000 !important;
     color:white !important;
+    border:1px solid #333 !important;
+}
+
+/* PASSWORD ICON BUTTON */
+section[data-testid="stSidebar"] button{
+    background-color:#000 !important;
+    border:none !important;
+}
+
+/* EYE ICON */
+section[data-testid="stSidebar"] button svg{
+    stroke:white !important;
+    fill:white !important;
 }
 
 /* SELECT BOX */
-section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
-    background:#111 !important;
+section[data-testid="stSidebar"] div[data-baseweb="select"] > div{
+    background:#000 !important;
     color:white !important;
 }
 
-/* PASSWORD EYE ICON FIX */
-section[data-testid="stSidebar"] button[kind="secondary"] svg {
-    stroke: white !important;
-    fill: white !important;
-}
-
-/* FALLBACK SVG FIX */
-section[data-testid="stSidebar"] svg {
-    stroke: white !important;
-}
-
 /* SLIDER */
-section[data-testid="stSidebar"] .stSlider {
+section[data-testid="stSidebar"] .stSlider{
     color:white !important;
 }
 
@@ -163,7 +167,7 @@ query = st.text_input("🔎 Search Product")
 client = OpenAI(api_key=openai_key) if openai_key else None
 
 # =========================================================
-# FETCH DATA
+# FETCH PRODUCTS
 # =========================================================
 def fetch(q, api_key, country):
 
@@ -175,12 +179,12 @@ def fetch(q, api_key, country):
         "hl": "en"
     }
 
-    r = requests.get(
+    response = requests.get(
         "https://serpapi.com/search",
         params=params
     )
 
-    data = r.json()
+    data = response.json()
 
     results = data.get("shopping_results", [])
 
@@ -206,7 +210,7 @@ def fetch(q, api_key, country):
     return pd.DataFrame(items)
 
 # =========================================================
-# AI COPILOT
+# AI SHOPPING COPILOT
 # =========================================================
 def ask_dealgenie(question, context=""):
 
@@ -219,22 +223,22 @@ def ask_dealgenie(question, context=""):
             model="gpt-4o-mini",
             messages=[
                 {
-                    "role": "system",
-                    "content": """
+                    "role":"system",
+                    "content":"""
 You are DealGenie AI Shopping Assistant.
 
-Your job:
-- Pick BEST product
-- Pick CHEAPEST product
+Your role:
+- Recommend BEST product
+- Find CHEAPEST option
 - Tell WHERE TO BUY
-- Explain WHY briefly
+- Explain WHY shortly
 
-Keep answers short and useful.
+Keep answers concise and useful.
 """
                 },
                 {
-                    "role": "user",
-                    "content": f"""
+                    "role":"user",
+                    "content":f"""
 Question:
 {question}
 
@@ -271,23 +275,30 @@ if st.button("🔎 Search Product"):
         st.warning("No products found")
         st.stop()
 
+    # FILTER PRICE
     df = df[
         (df["PriceNum"] >= price_range[0]) &
         (df["PriceNum"] <= price_range[1])
     ]
 
+    # LIMIT
     df = df.head(max_products)
 
+    # SAVE SESSION
     st.session_state["products_df"] = df
 
     st.markdown("## 🔥 Best Deals")
 
     df = df.reset_index(drop=True)
 
+    # =====================================================
+    # PRODUCT GRID
+    # =====================================================
     for i in range(0, len(df), 3):
 
-        row = df.iloc[i:i+3]
         cols = st.columns(3)
+
+        row = df.iloc[i:i+3]
 
         for col, (_, r) in zip(cols, row.iterrows()):
 
@@ -298,7 +309,11 @@ if st.button("🔎 Search Product"):
                     unsafe_allow_html=True
                 )
 
-                img = r["Image"] if r["Image"] else "https://via.placeholder.com/300"
+                img = (
+                    r["Image"]
+                    if r["Image"]
+                    else "https://via.placeholder.com/300"
+                )
 
                 st.image(
                     img,
@@ -343,7 +358,7 @@ user_q = st.sidebar.text_input(
 )
 
 # =========================================================
-# AI BUTTON
+# AI ASK BUTTON
 # =========================================================
 if st.sidebar.button("Ask Assistant"):
 
