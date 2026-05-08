@@ -9,70 +9,93 @@ import re
 st.set_page_config(page_title="DealGenie", layout="wide")
 
 # =========================================================
-# STYLE FIX (IMPORTANT PART)
+# STYLE (NETFLIX STYLE FIXED UI)
 # =========================================================
 st.markdown("""
 <style>
 
 .stApp {
-    background: radial-gradient(circle at top,#0b0b0b,#000);
-    color:white;
+    background: #0b0b0b;
+    color: white;
     font-family: Arial;
 }
 
 /* HERO */
 .hero {
-    background: linear-gradient(90deg, rgba(0,0,0,0.85), rgba(0,0,0,0.4)),
+    background: linear-gradient(90deg, rgba(0,0,0,0.9), rgba(0,0,0,0.3)),
     url('https://images.unsplash.com/photo-1607082350899-7e105aa886ae');
-    background-size:cover;
-    padding:60px;
-    border-radius:20px;
-    margin-bottom:20px;
+    background-size: cover;
+    padding: 60px;
+    border-radius: 20px;
+    margin-bottom: 20px;
 }
 
-/* CARD FIXED SIZE */
-.card {
-    background:#111;
-    border-radius:14px;
-    padding:12px;
-    border:1px solid #222;
-
-    height: 520px;          /* 🔥 FIXED HEIGHT */
+/* SCROLL ROW */
+.row {
     display: flex;
-    flex-direction: column;
-    justify-content: space-between;
+    overflow-x: auto;
+    gap: 16px;
+    padding: 10px 5px;
 }
 
-/* IMAGE FIX */
+/* HIDE SCROLLBAR */
+.row::-webkit-scrollbar {
+    display: none;
+}
+
+/* CARD */
+.card {
+    min-width: 240px;
+    max-width: 240px;
+    background: #141414;
+    border-radius: 12px;
+    overflow: hidden;
+    flex-shrink: 0;
+    border: 1px solid #222;
+}
+
+/* IMAGE */
 .card img {
-    height: 220px;          /* 🔥 SAME IMAGE HEIGHT */
-    object-fit: cover;      /* crop instead of stretch */
-    border-radius:10px;
+    width: 100%;
+    height: 220px;
+    object-fit: cover;
 }
 
-/* TEXT FIX */
-.product-title {
-    font-size:14px;
-    font-weight:600;
-    min-height: 40px;      /* prevents shifting */
+/* CONTENT */
+.card-body {
+    padding: 10px;
+}
+
+/* TITLE */
+.title {
+    font-size: 13px;
+    font-weight: 600;
+    height: 38px;
+    overflow: hidden;
+}
+
+/* PRICE */
+.price {
+    color: #00ffae;
+    font-weight: 700;
+    margin-top: 5px;
 }
 
 /* BUY BUTTON */
-.stLinkButton a {
-    background-color:#ff2d2d !important;
-    color:white !important;
-    padding:8px 12px;
-    border-radius:8px;
-    font-weight:700;
-    text-decoration:none;
+.buy {
+    display: block;
+    margin-top: 10px;
+    background: #ff2d2d;
+    color: white;
+    text-align: center;
+    padding: 6px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: 700;
 }
 
-/* SEARCH BUTTON */
-.stButton > button {
-    background:#ff2d2d;
-    color:white;
-    font-weight:800;
-    border-radius:10px;
+.buy:hover {
+    background: #ff0000;
 }
 
 </style>
@@ -84,7 +107,7 @@ st.markdown("""
 st.markdown("""
 <div class="hero">
 <h1>🛍 DealGenie AI Shopping</h1>
-<h3>Smart deals. Real savings. Best prices online.</h3>
+<h3>Smart deals. Real savings. Netflix style product discovery.</h3>
 </div>
 """, unsafe_allow_html=True)
 
@@ -95,7 +118,7 @@ st.sidebar.markdown("## ☰ Menu")
 
 api_key = st.sidebar.text_input("SerpAPI Key", type="password")
 country = st.sidebar.selectbox("Country", ["India", "US"])
-max_products = st.sidebar.slider("Show Results", 6, 30, 6)
+max_products = st.sidebar.slider("Max Products", 10, 30, 10)
 
 query = st.text_input("🔎 Search Product")
 
@@ -136,7 +159,7 @@ def fetch(q, api_key, country):
     return pd.DataFrame(items)
 
 # =========================================================
-# FILTER + SCORE
+# FILTER
 # =========================================================
 def is_relevant(title, q):
     return q.lower().split()[0] in str(title).lower()
@@ -163,48 +186,34 @@ if st.button("🔎 Search Product"):
     df["Score"] = df.apply(score, axis=1)
     df = df.sort_values("Score", ascending=False).head(max_products)
 
-    df = df.reset_index(drop=True)
-
-    st.markdown("## 🔥 Best Deals")
+    st.markdown("## 🔥 Top Deals")
 
     # =====================================================
-    # FIXED GRID
+    # NETFLIX STYLE ROW
     # =====================================================
-    for i in range(0, len(df), 3):
+    html = '<div class="row">'
 
-        row = df.iloc[i:i+3]
-        cols = st.columns(3)
+    for _, r in df.iterrows():
 
-        for col, (_, r) in zip(cols, row.iterrows()):
+        img = r["Image"] if r["Image"] else "https://via.placeholder.com/300"
 
-            with col:
+        html += f"""
+        <div class="card">
+            <img src="{img}">
+            <div class="card-body">
+                <div class="title">{str(r['Product'])[:60]}</div>
+                <div class="price">{r['Price']}</div>
+                <div style="font-size:12px; color:#aaa;">
+                    ⭐ {r['Rating'] if r.get('Rating') else '-'} / 5
+                </div>
 
-                st.markdown('<div class="card">', unsafe_allow_html=True)
+                <a class="buy" href="{r['Link']}" target="_blank">
+                    🛒 Buy Now
+                </a>
+            </div>
+        </div>
+        """
 
-                img = r["Image"] if r["Image"] else "https://via.placeholder.com/300"
+    html += "</div>"
 
-                st.image(img)
-
-                title = str(r['Product'])[:60] if r['Product'] else "No Title"
-
-                st.markdown(f"<div class='product-title'>{title}</div>", unsafe_allow_html=True)
-
-                st.write(f"💰 {r['Price']}")
-
-                # FIX: reserve space so layout doesn't jump
-                if r.get("Rating"):
-                    st.write(f"⭐ {r['Rating']} / 5")
-                else:
-                    st.write("⭐ -")
-
-                if r.get("Reviews"):
-                    st.caption(f"{r['Reviews']} reviews")
-                else:
-                    st.caption(" ")
-
-                if r["Link"]:
-                    st.link_button("🛒 Buy Now", r["Link"])
-                else:
-                    st.button("No Link Available", disabled=True)
-
-                st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown(html, unsafe_allow_html=True)
