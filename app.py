@@ -6,10 +6,10 @@ import re
 # =========================================================
 # CONFIG
 # =========================================================
-st.set_page_config(page_title="DealGenie AI Shopping", layout="wide")
+st.set_page_config(page_title="DealGenie", layout="wide")
 
 # =========================================================
-# ORIGINAL BRAND UI (RESTORED)
+# THEME + BRAND FIX
 # =========================================================
 st.markdown("""
 <style>
@@ -20,49 +20,62 @@ st.markdown("""
     font-family: Arial;
 }
 
-/* BUTTON */
-.stButton > button {
-    background:#ff2d2d;
-    color:white;
-    font-weight:800;
-    border-radius:10px;
-}
-
-/* HERO */
+/* HERO BACKGROUND (PRODUCT RELEVANT) */
 .hero {
-    background: linear-gradient(90deg,#000,rgba(0,0,0,0.3)),
-    url('https://images.unsplash.com/photo-1518770660439-4636190af475');
+    background: linear-gradient(90deg, rgba(0,0,0,0.85), rgba(0,0,0,0.4)),
+    url('https://images.unsplash.com/photo-1607082349566-187342175e2f');
     background-size:cover;
     padding:60px;
     border-radius:20px;
     margin-bottom:20px;
 }
 
-/* CARD STYLE RESTORED */
+/* GRID CARDS UNIFORM SIZE */
 .card {
     background:#111;
     border-radius:14px;
     padding:12px;
     border:1px solid #222;
+    height:420px;
+    display:flex;
+    flex-direction:column;
+    justify-content:space-between;
+}
+
+/* IMAGE FIX */
+.card img {
+    height:180px;
+    object-fit:contain;
+}
+
+/* BUY BUTTON RED */
+.stLinkButton a {
+    background-color:#ff2d2d !important;
+    color:white !important;
+    padding:8px 12px;
+    border-radius:8px;
+    font-weight:700;
+    text-decoration:none;
+    display:inline-block;
 }
 
 </style>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# HERO (UNCHANGED BRAND)
+# HERO (ONLY DEALGENIE)
 # =========================================================
 st.markdown("""
 <div class="hero">
-<h1>🛍 DealGenie AI Shopping</h1>
-<h3>Smart recommendations. Real savings.</h3>
+<h1>🛍 DealGenie</h1>
+<h3>Smart deals. Real insights.</h3>
 </div>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# SIDEBAR FILTER
+# MENU (SIDEBAR RENAMED)
 # =========================================================
-st.sidebar.markdown("## 🎛 Controls")
+st.sidebar.markdown("## ☰ Menu")
 
 api_key = st.sidebar.text_input("SerpAPI Key", type="password")
 country = st.sidebar.selectbox("Country", ["India", "US"])
@@ -94,7 +107,6 @@ def fetch(q, api_key, country):
         price_text = x.get("price") or "0"
         price_num = int(re.sub(r"[^\d]", "", str(price_text)) or 0)
 
-        # ✅ FIX: multiple link fallbacks
         link = x.get("link") or x.get("product_link") or ""
 
         items.append({
@@ -108,64 +120,28 @@ def fetch(q, api_key, country):
     return pd.DataFrame(items)
 
 # =========================================================
-# INTENT
+# SIMPLE FILTER
 # =========================================================
-def detect_intent(q):
+def is_relevant(title, q):
+    return q.lower().split()[0] in str(title).lower()
 
-    q = q.lower()
-
-    if "tshirt" in q or "tee" in q:
-        return "tshirt"
-    if "shoe" in q or "sneaker" in q:
-        return "shoes"
-    if "mobile" in q:
-        return "mobile"
-    if "laptop" in q:
-        return "laptop"
-
-    return "generic"
-
-# =========================================================
-# FILTER
-# =========================================================
-def is_relevant(title, intent):
-
-    t = str(title).lower()
-
-    mapping = {
-        "tshirt": ["tshirt", "t-shirt", "tee", "shirt", "polo"],
-        "shoes": ["shoe", "sneaker", "running"],
-        "mobile": ["mobile", "phone"],
-        "laptop": ["laptop"]
-    }
-
-    keys = mapping.get(intent, [])
-
-    if not keys:
-        return True
-
-    return any(k in t for k in keys)
-
-# =========================================================
-# SCORE
-# =========================================================
 def score(row):
     return 1 / (row["PriceNum"] + 1)
 
 # =========================================================
-# SAFE BUY (FIXED)
+# SAFE BUY BUTTON (RED FIX)
 # =========================================================
 def safe_buy(url, key):
 
-    if not url or str(url).strip() == "":
-        st.button("🛒 No Link Available", disabled=True, key=f"no_{key}")
+    if not url:
+        st.button("No Link Available", disabled=True, key=f"no_{key}")
     else:
         st.link_button("🛒 Buy Now", url, key=f"buy_{key}")
 
 # =========================================================
 # MAIN
 # =========================================================
-if st.button("🚀 Search Product"):
+if st.button("Search Product"):
 
     if not api_key or not query:
         st.warning("Enter API key + product")
@@ -177,46 +153,28 @@ if st.button("🚀 Search Product"):
         st.warning("No products found")
         st.stop()
 
-    intent = detect_intent(query)
-
-    df = df[df["Product"].apply(lambda x: is_relevant(x, intent))]
-
-    if df.empty:
-        st.warning("No relevant products found")
-        st.stop()
+    df = df[df["Product"].apply(lambda x: is_relevant(x, query))]
 
     df["Score"] = df.apply(score, axis=1)
-    df = df.sort_values("Score", ascending=False)
-
-    df = df.head(max_products)
+    df = df.sort_values("Score", ascending=False).head(max_products)
 
     # =====================================================
-    # BEST DEAL (CARD STYLE RESTORED)
+    # GRID DISPLAY (UNIFORM SIZE FIX)
     # =====================================================
-    best = df.iloc[0]
-
-    st.markdown("## 🔥 Best Deal")
-
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.image(best["Image"], width=300)
-    st.markdown(f"### {best['Product']}")
-    st.write(best["Price"])
-    safe_buy(best["Link"], 0)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    # =====================================================
-    # MORE DEALS
-    # =====================================================
-    st.markdown("## 🛍 More Deals")
+    st.markdown("## 🔥 Deals")
 
     cols = st.columns(3)
 
     for i, r in df.iterrows():
 
         with cols[i % 3]:
+
             st.markdown('<div class="card">', unsafe_allow_html=True)
+
             st.image(r["Image"], use_container_width=True)
-            st.write(r["Product"])
+            st.markdown(f"**{r['Product'][:60]}**")
             st.write(r["Price"])
-            safe_buy(r["Link"], i + 1)
+
+            safe_buy(r["Link"], i)
+
             st.markdown('</div>', unsafe_allow_html=True)
