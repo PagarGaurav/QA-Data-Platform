@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import requests
 import re
-import os
 from openai import OpenAI
 
 # =========================================================
@@ -53,7 +52,7 @@ img {
 # HEADER
 # =========================================================
 st.markdown("# 🛍 DealGenie")
-st.markdown("### AI Shopping Copilot System")
+st.markdown("### AI Shopping Copilot")
 
 # =========================================================
 # SIDEBAR
@@ -61,6 +60,8 @@ st.markdown("### AI Shopping Copilot System")
 st.sidebar.markdown("## Filters")
 
 api_key = st.sidebar.text_input("SerpAPI Key", type="password")
+openai_key = st.sidebar.text_input("OpenAI API Key (for Copilot)", type="password")
+
 country = st.sidebar.selectbox("Country", ["India", "US"])
 max_products = st.sidebar.slider("Max Products", 1, 5, 5)
 price_range = st.sidebar.slider("Price Range (₹)", 500, 10000, (500, 10000))
@@ -69,12 +70,9 @@ query = st.text_input("Search Product")
 search_btn = st.button("Search")
 
 # =========================================================
-# OPENAI CLIENT (COPILOT)
+# OPENAI CLIENT (RUNTIME SAFE)
 # =========================================================
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
+client = OpenAI(api_key=openai_key) if openai_key else None
 
 # =========================================================
 # FETCH DATA
@@ -112,7 +110,7 @@ def fetch(q, api_key, country):
     return pd.DataFrame(items)
 
 # =========================================================
-# LIGHT AI (UNCHANGED LOGIC STYLE)
+# AI CORE (UNCHANGED LOGIC STYLE)
 # =========================================================
 def detect_intent(q):
     q = q.lower()
@@ -147,39 +145,31 @@ def rank(df, intent):
     return df.sort_values("AI_Score", ascending=False)
 
 # =========================================================
-# 🧠 GPT COPILOT FUNCTION
+# 🧠 GPT COPILOT (SAFE RUNTIME MODE)
 # =========================================================
 def ask_dealgenie(question, context=""):
 
-    system_prompt = """
-You are DealGenie AI Shopping Copilot.
-
-Rules:
-- Help users decide what to buy
-- Compare products if needed
-- Be short, clear, and practical
-- Focus on price, rating, and value
-"""
-
-    user_prompt = f"""
-User question: {question}
-
-Context (top products):
-{context}
-"""
+    if client is None:
+        return "⚠️ Enter OpenAI API key in sidebar to enable AI Copilot."
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
+            {
+                "role": "system",
+                "content": "You are DealGenie AI Shopping Copilot. Help users choose products, compare, and decide."
+            },
+            {
+                "role": "user",
+                "content": f"{question}\n\nContext:\n{context}"
+            }
         ]
     )
 
     return response.choices[0].message.content
 
 # =========================================================
-# MAIN FLOW (UNCHANGED CORE LOGIC)
+# MAIN FLOW (UNCHANGED)
 # =========================================================
 if search_btn:
 
@@ -214,13 +204,13 @@ if search_btn:
 
             with col:
 
-                st.image(r["Image"] if r["Image"] else "https://via.placeholder.com/300",
-                         use_container_width=True)
+                st.image(
+                    r["Image"] if r["Image"] else "https://via.placeholder.com/300",
+                    use_container_width=True
+                )
 
                 st.markdown(f"**{r['Product']}**")
-
                 st.write(f"💰 {r['Price']}")
-
                 st.write(f"⭐ {r['Rating']}")
 
                 if r["Link"]:
@@ -229,30 +219,22 @@ if search_btn:
                     st.button("No Link", disabled=True)
 
 # =========================================================
-# 💬 ASK DEALGENIE (GPT COPILOT UI - NO CHANGE TO MAIN UI)
+# 💬 ASK DEALGENIE COPILOT (NEW ADDITION ONLY)
 # =========================================================
 st.markdown("---")
 st.markdown("## 💬 Ask DealGenie (AI Copilot)")
 
-user_q = st.text_input("Ask anything: compare, suggest, or decide")
+user_q = st.text_input("Ask: compare, suggest, or decide")
 
 if st.button("Ask AI Copilot"):
 
     if user_q:
 
         context = ""
-
         if "df" in locals() and not df.empty:
             context = df.head(3)[["Product", "Price", "Rating"]].to_string()
 
         answer = ask_dealgenie(user_q, context)
 
-        st.session_state.chat_history.append(("You", user_q))
-        st.session_state.chat_history.append(("DealGenie AI", answer))
-
-# CHAT DISPLAY
-for role, msg in st.session_state.chat_history:
-    if role == "You":
-        st.markdown(f"**🧑 You:** {msg}")
-    else:
-        st.markdown(f"**🤖 DealGenie AI:** {msg}")
+        st.markdown("### 🤖 DealGenie AI Response")
+        st.write(answer)
