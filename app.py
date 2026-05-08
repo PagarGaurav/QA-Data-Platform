@@ -1,430 +1,628 @@
 import streamlit as st
-import requests
 import pandas as pd
-import time
-import random
+import requests
+import io
 import re
 from datetime import datetime
 
-# ---------------- PAGE CONFIG ----------------
+# =========================================================
+# PAGE CONFIG
+# =========================================================
 st.set_page_config(
-    page_title="DealGenie AI",
-    page_icon="🛍️",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    page_title="DealGenie - AI Shopping Assistant",
+    layout="wide"
 )
 
-# ---------------- CUSTOM CSS ----------------
+# =========================================================
+# PREMIUM GEN-Z UI
+# =========================================================
 st.markdown("""
 <style>
-html, body, [class*="css"] {
-    font-family: 'Inter', sans-serif;
-}
 
+/* =======================================================
+BACKGROUND
+======================================================= */
 .stApp {
-    background: linear-gradient(135deg,#020617,#0f172a,#111827);
-    color: white;
+    background: linear-gradient(135deg,#070b14,#0f172a,#111827);
+    color: #f8fafc;
 }
 
-.main-title {
-    font-size: 4rem;
-    font-weight: 900;
-    background: linear-gradient(90deg,#d946ef,#ec4899,#22d3ee);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    text-align: center;
+/* =======================================================
+SIDEBAR
+======================================================= */
+section[data-testid="stSidebar"] {
+    background: linear-gradient(180deg,#0f172a,#111827) !important;
+    border-right: 1px solid rgba(255,255,255,0.06);
 }
 
-.subtitle {
-    text-align:center;
-    color:#94a3b8;
-    font-size:1.2rem;
-    margin-bottom:2rem;
+/* MENU TITLE */
+section[data-testid="stSidebar"] h2 {
+    color: #ffffff !important;
+    font-weight: 900 !important;
+    letter-spacing: 0.5px;
+    font-size: 28px !important;
+    margin-bottom: 20px !important;
 }
 
-.card {
-    background: rgba(255,255,255,0.05);
-    backdrop-filter: blur(20px);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 24px;
-    padding: 20px;
-    margin-bottom:20px;
-}
-
-.metric-card {
-    background: rgba(255,255,255,0.04);
-    border-radius:20px;
-    padding:20px;
-    text-align:center;
-    border:1px solid rgba(255,255,255,0.08);
-}
-
-.metric-number {
-    font-size:2rem;
-    font-weight:800;
-    color:#d946ef;
-}
-
-.metric-label {
-    color:#94a3b8;
-}
-
-.insight {
-    background: linear-gradient(135deg, rgba(217,70,239,0.18), rgba(34,211,238,0.12));
-    padding:18px;
-    border-radius:20px;
-    border:1px solid rgba(255,255,255,0.08);
-    margin-bottom:12px;
-}
-
-.product-card {
-    background: rgba(255,255,255,0.05);
-    border-radius:28px;
-    overflow:hidden;
-    border:1px solid rgba(255,255,255,0.08);
-    transition:0.3s;
-    margin-bottom:25px;
-}
-
-.product-card:hover {
-    transform: translateY(-4px);
-    border:1px solid rgba(217,70,239,0.4);
-}
-
-.product-image {
-    width:100%;
-    height:260px;
-    object-fit:cover;
-}
-
-.badge {
-    background: linear-gradient(90deg,#d946ef,#ec4899);
-    padding:6px 12px;
-    border-radius:999px;
-    color:white;
-    font-size:12px;
-    font-weight:700;
-    display:inline-block;
-}
-
-.buy-btn {
-    display:inline-block;
-    background: linear-gradient(90deg,#d946ef,#ec4899);
-    color:white !important;
-    text-decoration:none;
-    padding:12px 20px;
+/* =======================================================
+BUTTONS
+======================================================= */
+.stButton > button {
+    background: linear-gradient(90deg,#a855f7,#ec4899);
+    color:#ffffff;
     border-radius:14px;
+    border:none;
+    padding:12px 20px;
     font-weight:700;
+    transition: all 0.3s ease;
+}
+
+.stButton > button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 20px rgba(236,72,153,0.4);
+}
+
+/* =======================================================
+DOWNLOAD BUTTONS
+======================================================= */
+.stDownloadButton > button {
+    background:#f8fafc !important;
+    color:#0f172a !important;
+    border-radius:12px;
+    font-weight:700;
+}
+
+/* =======================================================
+INPUTS
+======================================================= */
+.stTextInput input {
+    background:rgba(15,23,42,0.85) !important;
+    color:white !important;
+    border-radius:14px !important;
+    border:1px solid rgba(255,255,255,0.08) !important;
+    padding:14px !important;
+    font-size:16px !important;
+}
+
+/* =======================================================
+SELECTBOX
+======================================================= */
+.stSelectbox div[data-baseweb="select"] {
+    background:rgba(15,23,42,0.85) !important;
+    border-radius:12px !important;
+}
+
+/* =======================================================
+CARDS
+======================================================= */
+.card {
+    background: rgba(17,24,39,0.75);
+    backdrop-filter: blur(16px);
+    padding:22px;
+    border-radius:20px;
+    margin-bottom:22px;
+    border:1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+    transition: all 0.3s ease;
+}
+
+.card:hover {
+    transform: translateY(-3px);
+    border:1px solid #ec4899;
+    box-shadow:0 0 20px rgba(236,72,153,0.25);
+}
+
+/* =======================================================
+AI BOX
+======================================================= */
+.ai-box {
+    background: linear-gradient(145deg,#1e293b,#0f172a);
+    padding:18px;
+    border-radius:16px;
+    border-left:5px solid #ec4899;
+    margin-bottom:18px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.2);
+}
+
+/* =======================================================
+METRIC CARDS
+======================================================= */
+.metric-card {
+    background: rgba(17,24,39,0.75);
+    backdrop-filter: blur(16px);
+    padding:18px;
+    border-radius:18px;
+    text-align:center;
+    border:1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+}
+
+/* =======================================================
+HR
+======================================================= */
+hr {
+    border-color:#1e293b !important;
 }
 
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------- HEADER ----------------
-st.markdown('<div class="main-title">DealGenie AI</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">AI Powered Shopping Intelligence Platform</div>', unsafe_allow_html=True)
+# =========================================================
+# HEADER
+# =========================================================
+st.markdown("""
+<div style='text-align:center;padding:10px 0 25px 0;'>
 
-# ---------------- SIDEBAR ----------------
-with st.sidebar:
-    st.title("⚡ Menu")
+<h1 style='
+font-size:58px;
+font-weight:900;
+margin-bottom:5px;
+background:linear-gradient(90deg,#a855f7,#ec4899,#38bdf8);
+-webkit-background-clip:text;
+-webkit-text-fill-color:transparent;
+'>
+🛍 DealGenie
+</h1>
 
-    search_mode = st.selectbox(
-        "Search Mode",
-        [
-            "Smart AI",
-            "Budget Hunter",
-            "Best Rated",
-            "Trending",
-            "Luxury"
-        ]
-    )
+<h3 style='
+color:#cbd5e1;
+font-weight:500;
+letter-spacing:1px;
+'>
+AI Shopping Assistant
+</h3>
 
-    sort_by = st.selectbox(
-        "Sort By",
-        [
-            "Cheapest",
-            "Highest Rated",
-            "Most Reviews"
-        ]
-    )
+<p style='
+color:#94a3b8;
+font-size:18px;
+'>
+Compare products across brands with smart AI-powered shopping intelligence
+</p>
 
-    min_rating = st.slider("Minimum Rating", 0.0, 5.0, 3.5)
+</div>
+""", unsafe_allow_html=True)
 
-    max_products = st.slider("Max Products", 3, 20, 9)
+# =========================================================
+# SIDEBAR MENU
+# =========================================================
+st.sidebar.markdown(
+    """
+    <h2>✨ Menu</h2>
+    """,
+    unsafe_allow_html=True
+)
 
-# ---------------- SEARCH ----------------
-col1, col2 = st.columns([5,1])
+api_key = st.sidebar.text_input(
+    "🔑 SerpAPI Key",
+    type="password"
+)
 
-with col1:
-    query = st.text_input(
-        "",
-        placeholder="Search products like: iPhone 15, Nike shoes, Gaming Laptop..."
-    )
+country = st.sidebar.selectbox(
+    "🌍 Country",
+    ["India", "US"],
+    index=0
+)
 
-with col2:
-    search_clicked = st.button("🚀 Search")
+max_products = st.sidebar.slider(
+    "📦 Max Products",
+    5,
+    50,
+    15
+)
 
-# ---------------- METRICS ----------------
-m1,m2,m3,m4 = st.columns(4)
+sort_option = st.sidebar.selectbox(
+    "📊 Sort By",
+    [
+        "Cheapest First",
+        "Highest Rated",
+        "Most Reviewed"
+    ]
+)
 
-metrics = [
-    ("2.5M+", "Products Compared"),
-    ("150+", "Stores"),
-    ("98%", "Price Accuracy"),
-    ("24/7", "AI Insights")
-]
+# =========================================================
+# SEARCH
+# =========================================================
+query = st.text_input(
+    "🔍 Search Product",
+    placeholder="Example: black jeans, iphone 15, nike shoes"
+)
 
-for col,metric in zip([m1,m2,m3,m4], metrics):
-    with col:
-        st.markdown(f'''
-        <div class="metric-card">
-            <div class="metric-number">{metric[0]}</div>
-            <div class="metric-label">{metric[1]}</div>
-        </div>
-        ''', unsafe_allow_html=True)
-
-# ---------------- FUNCTIONS ----------------
-
+# =========================================================
+# HELPERS
+# =========================================================
 def extract_price(price):
-    nums = re.sub(r'[^\\d]', '', str(price))
+
+    nums = re.sub(r"[^\d]", "", str(price))
+
     return int(nums) if nums else 999999
 
 
-def deal_score(price_num, rating, reviews):
-    score = 100
+def extract_reviews(value):
 
-    if price_num > 100000:
-        score -= 15
-    elif price_num > 50000:
-        score -= 8
+    nums = re.sub(r"[^\d]", "", str(value))
 
-    score += int(float(rating) * 5)
-
-    if reviews > 5000:
-        score += 10
-    elif reviews > 1000:
-        score += 5
-
-    return min(score, 99)
+    return int(nums) if nums else 0
 
 
-def ai_insights(df):
+def safe_rating(value):
+
+    try:
+        return float(value)
+    except:
+        return 0
+
+
+# =========================================================
+# AI INSIGHTS
+# =========================================================
+def generate_ai_insights(df):
 
     insights = []
 
     if len(df) == 0:
-        return []
+        return insights
 
     cheapest = df.iloc[0]
 
-    insights.append(f"🏆 Best value currently is {cheapest['title'][:40]}")
-    insights.append(f"💰 Cheapest deal starts from {cheapest['price']}")
-    insights.append(f"⭐ Highest rating found: {df['rating'].max()}")
-    insights.append(f"🛒 Compared {len(df)} products in real-time")
+    insights.append(
+        f"🏆 Cheapest product available on {cheapest['Platform']} for {cheapest['Price']}"
+    )
+
+    best_rated = df.sort_values(
+        "rating_num",
+        ascending=False
+    ).iloc[0]
+
+    insights.append(
+        f"⭐ Highest rated product: {best_rated['Product'][:60]}"
+    )
+
+    most_reviewed = df.sort_values(
+        "reviews_num",
+        ascending=False
+    ).iloc[0]
+
+    insights.append(
+        f"🔥 Most reviewed product has {most_reviewed['Reviews']} reviews"
+    )
+
+    savings = (
+        df["price_num"].max() -
+        df["price_num"].min()
+    )
+
+    insights.append(
+        f"💰 Potential savings opportunity: ₹{savings:,}"
+    )
 
     return insights
 
 
-def get_products(q):
-
-    api_key = st.secrets.get("SERPAPI_KEY", "")
-
-    if not api_key:
-        st.error("Add SERPAPI_KEY in Streamlit secrets.")
-        return pd.DataFrame()
+# =========================================================
+# FETCH PRODUCTS
+# =========================================================
+def fetch_products(search_query):
 
     params = {
         "engine": "google_shopping",
-        "q": q,
+        "q": search_query,
         "api_key": api_key,
-        "gl": "in",
+        "gl": "in" if country == "India" else "us",
         "hl": "en"
     }
 
-    try:
+    response = requests.get(
+        "https://serpapi.com/search",
+        params=params,
+        timeout=30
+    )
 
-        response = requests.get(
-            "https://serpapi.com/search",
-            params=params,
-            timeout=30
-        )
+    if response.status_code != 200:
+        raise Exception("SerpAPI request failed")
 
-        data = response.json()
+    data = response.json()
 
-        results = data.get("shopping_results", [])
+    if "error" in data:
+        raise Exception(data["error"])
 
-        rows = []
+    shopping_results = data.get(
+        "shopping_results",
+        []
+    )[:max_products]
 
-        for item in results[:max_products]:
+    products = []
 
-            title = item.get("title", "Unknown Product")
-            price = item.get("price", "₹0")
-            platform = item.get("source", "Unknown")
-            rating = float(item.get("rating", 0) or 0)
-            reviews = int(item.get("reviews", 0) or 0)
-            image = item.get("thumbnail", "")
-            link = item.get("product_link") or item.get("link") or "#"
+    for item in shopping_results:
 
-            if rating < min_rating:
-                continue
+        title = item.get("title", "")
+        price = item.get("price", "")
+        source = item.get("source", "")
 
-            price_num = extract_price(price)
+        link = item.get("product_link")
 
-            rows.append({
-                "title": title,
-                "price": price,
-                "platform": platform,
-                "rating": rating,
-                "reviews": reviews,
-                "image": image,
-                "link": link,
-                "price_num": price_num,
-                "deal_score": deal_score(price_num, rating, reviews)
-            })
+        if not link:
+            link = item.get("link")
 
-        df = pd.DataFrame(rows)
+        if not link:
+            continue
 
-        if len(df) == 0:
-            return df
+        thumbnail = item.get("thumbnail", "")
+        rating = item.get("rating", "")
+        reviews = item.get("reviews", "")
 
-        if sort_by == "Cheapest":
-            df = df.sort_values("price_num")
-        elif sort_by == "Highest Rated":
-            df = df.sort_values("rating", ascending=False)
-        else:
-            df = df.sort_values("reviews", ascending=False)
-
-        return df
-
-    except Exception as e:
-        st.error(str(e))
-        return pd.DataFrame()
-
-# ---------------- SEARCH FLOW ----------------
-if search_clicked and query:
-
-    progress = st.progress(0)
-
-    status = st.empty()
-
-    for i in range(100):
-        progress.progress(i + 1)
-
-        if i < 30:
-            status.info("🔍 Searching products...")
-        elif i < 60:
-            status.info("🧠 Generating AI insights...")
-        else:
-            status.info("⚡ Comparing prices...")
-
-        time.sleep(0.01)
-
-    df = get_products(query)
-
-    progress.empty()
-    status.empty()
-
-    if len(df) == 0:
-        st.warning("No products found.")
-
-    else:
-
-        # HISTORY
-        if "history" not in st.session_state:
-            st.session_state.history = []
-
-        st.session_state.history.append({
-            "query": query,
-            "time": datetime.now().strftime("%H:%M:%S")
+        products.append({
+            "Product": title,
+            "Price": price,
+            "Platform": source,
+            "Rating": rating,
+            "Reviews": reviews,
+            "Link": link,
+            "Image": thumbnail,
+            "price_num": extract_price(price),
+            "rating_num": safe_rating(rating),
+            "reviews_num": extract_reviews(reviews)
         })
 
-        # INSIGHTS
-        st.subheader("🧠 AI Insights")
+    return products
 
-        for insight in ai_insights(df):
-            st.markdown(f'<div class="insight">{insight}</div>', unsafe_allow_html=True)
 
-        # CHARTS
-        st.subheader("📈 Price Intelligence")
+# =========================================================
+# MAIN BUTTON
+# =========================================================
+if st.button("🚀 Compare Prices"):
 
-        chart_df = df[["title", "price_num"]].copy()
-        chart_df = chart_df.head(8)
-        chart_df = chart_df.set_index("title")
+    if not api_key:
+        st.warning("Please enter SerpAPI key")
+        st.stop()
 
-        st.bar_chart(chart_df)
+    if not query:
+        st.warning("Please enter product name")
+        st.stop()
 
-        # PRODUCTS
-        st.subheader("🛍 Product Comparison")
+    with st.spinner(
+        "Fetching real-time products and generating AI insights..."
+    ):
 
-        cols = st.columns(3)
+        try:
+            products = fetch_products(query)
 
-        for idx, (_, row) in enumerate(df.iterrows()):
+        except Exception as e:
+            st.error(f"Error: {e}")
+            st.stop()
 
-            with cols[idx % 3]:
+    if not products:
+        st.error("No products found")
+        st.stop()
 
-                badge = "🏆 Best Deal" if idx == 0 else f"🔥 Score {row['deal_score']}"
+    # =====================================================
+    # DATAFRAME
+    # =====================================================
+    df = pd.DataFrame(products)
 
-                st.markdown(f'''
-                <div class="product-card">
-                    <img src="{row['image']}" class="product-image">
+    # =====================================================
+    # SORTING
+    # =====================================================
+    if sort_option == "Cheapest First":
 
-                    <div style="padding:20px;">
+        df = df.sort_values("price_num")
 
-                        <div class="badge">{badge}</div>
+    elif sort_option == "Highest Rated":
 
-                        <h3 style="margin-top:16px; color:white;">
-                            {row['title'][:80]}
-                        </h3>
-
-                        <p style="color:#94a3b8;">
-                            {row['platform']}
-                        </p>
-
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
-                            <div>
-                                <div style="font-size:30px; font-weight:900; color:#d946ef;">
-                                    {row['price']}
-                                </div>
-                                <div style="color:#94a3b8;">
-                                    ⭐ {row['rating']} | {row['reviews']} reviews
-                                </div>
-                            </div>
-                        </div>
-
-                        <div style="margin-top:20px;">
-                            <a class="buy-btn" href="{row['link']}" target="_blank">
-                                Buy Now
-                            </a>
-                        </div>
-
-                    </div>
-                </div>
-                ''', unsafe_allow_html=True)
-
-        # EXPORTS
-        st.subheader("📥 Export")
-
-        csv = df.to_csv(index=False).encode('utf-8')
-
-        st.download_button(
-            "⬇ Download CSV",
-            csv,
-            file_name="dealgenie_results.csv",
-            mime="text/csv"
+        df = df.sort_values(
+            "rating_num",
+            ascending=False
         )
 
-# ---------------- HISTORY ----------------
-if "history" in st.session_state and len(st.session_state.history) > 0:
+    elif sort_option == "Most Reviewed":
 
-    st.subheader("🕘 Recent Searches")
+        df = df.sort_values(
+            "reviews_num",
+            ascending=False
+        )
 
-    hist_cols = st.columns(min(4, len(st.session_state.history)))
+    # =====================================================
+    # METRICS
+    # =====================================================
+    st.markdown("---")
 
-    for i,item in enumerate(reversed(st.session_state.history[-4:])):
-        with hist_cols[i % len(hist_cols)]:
-            st.markdown(f'''
-            <div class="card">
-                <b>{item['query']}</b><br>
-                <span style="color:#94a3b8;">{item['time']}</span>
+    c1, c2, c3, c4 = st.columns(4)
+
+    with c1:
+        st.metric(
+            "🛒 Products",
+            len(df)
+        )
+
+    with c2:
+        st.metric(
+            "🏆 Cheapest",
+            df.iloc[0]["Price"]
+        )
+
+    with c3:
+        st.metric(
+            "⭐ Top Rating",
+            str(df["rating_num"].max())
+        )
+
+    with c4:
+        st.metric(
+            "🕒 Updated",
+            datetime.now().strftime("%H:%M:%S")
+        )
+
+    # =====================================================
+    # AI INSIGHTS
+    # =====================================================
+    st.markdown("---")
+
+    st.subheader("🧠 AI Shopping Insights")
+
+    insights = generate_ai_insights(df)
+
+    for insight in insights:
+
+        st.markdown(
+            f'''
+            <div class="ai-box">
+                {insight}
             </div>
-            ''', unsafe_allow_html=True)
+            ''',
+            unsafe_allow_html=True
+        )
+
+    # =====================================================
+    # PRODUCT CARDS
+    # =====================================================
+    st.markdown("---")
+
+    st.subheader("🛍 Product Comparison")
+
+    min_price = df["price_num"].min()
+
+    for _, row in df.iterrows():
+
+        st.markdown(
+            '<div class="card">',
+            unsafe_allow_html=True
+        )
+
+        col1, col2 = st.columns([1, 3])
+
+        # IMAGE
+        with col1:
+
+            if row["Image"]:
+
+                st.image(
+                    row["Image"],
+                    width=180
+                )
+
+        # DETAILS
+        with col2:
+
+            st.markdown(
+                f'''
+                <a href="{row['Link']}"
+                   target="_blank"
+                   rel="noopener noreferrer"
+                   style="text-decoration:none;color:white;">
+
+                    <h3>{row['Product']}</h3>
+
+                </a>
+                ''',
+                unsafe_allow_html=True
+            )
+
+            st.write(f"🏬 Platform: {row['Platform']}")
+            st.write(f"💰 Price: {row['Price']}")
+
+            if row["Rating"]:
+                st.write(f"⭐ Rating: {row['Rating']}")
+
+            if row["Reviews"]:
+                st.write(f"📝 Reviews: {row['Reviews']}")
+
+            # BEST DEAL
+            if row["price_num"] == min_price:
+                st.success("🏆 Best Deal Available")
+
+            # BUY BUTTON
+            st.markdown(
+                f'''
+                <a href="{row['Link']}"
+                   target="_blank"
+                   rel="noopener noreferrer">
+
+                    <button style="
+                        background: linear-gradient(90deg,#a855f7,#ec4899);
+                        color:white;
+                        border:none;
+                        padding:10px 18px;
+                        border-radius:10px;
+                        cursor:pointer;
+                        font-weight:700;
+                    ">
+                        🛒 Buy Now
+                    </button>
+
+                </a>
+                ''',
+                unsafe_allow_html=True
+            )
+
+        st.markdown(
+            '</div>',
+            unsafe_allow_html=True
+        )
+
+    # =====================================================
+    # TABLE
+    # =====================================================
+    st.markdown("---")
+
+    st.subheader("📊 Comparison Table")
+
+    st.dataframe(
+        df[[
+            "Product",
+            "Price",
+            "Platform",
+            "Rating",
+            "Reviews"
+        ]],
+        use_container_width=True
+    )
+
+    # =====================================================
+    # DOWNLOADS
+    # =====================================================
+    st.markdown("---")
+
+    st.subheader("⬇ Export Results")
+
+    d1, d2, d3 = st.columns(3)
+
+    with d1:
+
+        st.download_button(
+            "CSV",
+            df.to_csv(index=False),
+            "products.csv"
+        )
+
+    with d2:
+
+        st.download_button(
+            "JSON",
+            df.to_json(orient="records"),
+            "products.json"
+        )
+
+    with d3:
+
+        buffer = io.BytesIO()
+
+        df.to_excel(
+            buffer,
+            index=False
+        )
+
+        buffer.seek(0)
+
+        st.download_button(
+            "Excel",
+            buffer,
+            "products.xlsx"
+        )
+
+# =========================================================
+# FOOTER
+# =========================================================
+st.markdown("---")
+
+st.caption(
+    "DealGenie • AI-powered product comparison • Enterprise shopping assistant"
+)
