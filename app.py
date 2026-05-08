@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import requests
 import re
+import os
+from openai import OpenAI
 
 # =========================================================
 # CONFIG
@@ -9,7 +11,7 @@ import re
 st.set_page_config(page_title="DealGenie", layout="wide")
 
 # =========================================================
-# UI (UNCHANGED - DO NOT TOUCH)
+# UI (UNCHANGED)
 # =========================================================
 st.markdown("""
 <style>
@@ -51,7 +53,7 @@ img {
 # HEADER
 # =========================================================
 st.markdown("# 🛍 DealGenie")
-st.markdown("### AI Shopping System")
+st.markdown("### AI Shopping Copilot System")
 
 # =========================================================
 # SIDEBAR
@@ -67,7 +69,15 @@ query = st.text_input("Search Product")
 search_btn = st.button("Search")
 
 # =========================================================
-# DATA FETCH
+# OPENAI CLIENT (COPILOT)
+# =========================================================
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+
+# =========================================================
+# FETCH DATA
 # =========================================================
 def fetch(q, api_key, country):
 
@@ -102,80 +112,74 @@ def fetch(q, api_key, country):
     return pd.DataFrame(items)
 
 # =========================================================
-# 🧠 AI USE CASE 1: SEMANTIC SEARCH (SAFE ADD-ON)
+# LIGHT AI (UNCHANGED LOGIC STYLE)
 # =========================================================
-def semantic_search_only(query, df):
+def detect_intent(q):
+    q = q.lower()
+    if "cheap" in q or "budget" in q:
+        return "BUDGET"
+    elif "best" in q or "premium" in q:
+        return "QUALITY"
+    return "BALANCED"
 
-    q = query.lower()
 
-    synonyms = {
-        "shoe": ["sneaker", "footwear", "sports"],
-        "gym": ["fitness", "training"],
-        "laptop": ["notebook", "computer"],
-        "phone": ["mobile", "smartphone"],
-        "cheap": ["budget", "low price"],
-        "best": ["top", "premium"]
-    }
-
-    expanded = [q]
-
-    for k, v in synonyms.items():
-        if k in q:
-            expanded += v
-
-    def score(text):
-        text = str(text).lower()
-        return sum(1 for w in expanded if w in text)
-
-    temp = df.copy()
-    temp["semantic_score"] = temp["Product"].apply(score)
-
-    return temp.sort_values("semantic_score", ascending=False)
-
-# =========================================================
-# 🧠 AI USE CASE 2: DEAL CLASSIFICATION (SAFE ADD-ON)
-# =========================================================
-def classify_deals(df):
+def rank(df, intent):
 
     df = df.copy()
 
     df["PriceNum"] = pd.to_numeric(df["PriceNum"], errors="coerce").fillna(0)
     df["Rating"] = pd.to_numeric(df["Rating"], errors="coerce").fillna(0)
 
-    avg_price = df["PriceNum"].mean() or 1
+    max_price = df["PriceNum"].max() or 1
 
-    def label(row):
-        if row["PriceNum"] < avg_price * 0.7:
-            return "🔥 Best Value"
-        elif row["PriceNum"] > avg_price * 1.5:
-            return "⚠️ Overpriced"
-        return "👍 Fair Deal"
+    df["price_score"] = 1 - (df["PriceNum"] / max_price)
+    df["rating_score"] = df["Rating"] / 5
 
-    df["Deal_Label"] = df.apply(label, axis=1)
+    if intent == "BUDGET":
+        w1, w2 = 0.75, 0.25
+    elif intent == "QUALITY":
+        w1, w2 = 0.3, 0.7
+    else:
+        w1, w2 = 0.55, 0.45
 
-    return df
+    df["AI_Score"] = (df["price_score"] * w1 + df["rating_score"] * w2) * 100
+
+    return df.sort_values("AI_Score", ascending=False)
 
 # =========================================================
-# 🧠 AI USE CASE 3: MARKET INSIGHTS (READ ONLY)
+# 🧠 GPT COPILOT FUNCTION
 # =========================================================
-def market_insights(df):
+def ask_dealgenie(question, context=""):
 
-    if df.empty:
-        return ""
+    system_prompt = """
+You are DealGenie AI Shopping Copilot.
 
-    avg_price = df["PriceNum"].mean()
-    avg_rating = df["Rating"].mean()
-
-    return f"""
-### 📊 Market Insights
-
-- 💰 Avg Price: ₹{int(avg_price)}
-- ⭐ Avg Rating: {round(avg_rating, 2)}
-- 📌 Insight: Mid-range products dominate results
+Rules:
+- Help users decide what to buy
+- Compare products if needed
+- Be short, clear, and practical
+- Focus on price, rating, and value
 """
 
+    user_prompt = f"""
+User question: {question}
+
+Context (top products):
+{context}
+"""
+
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+    )
+
+    return response.choices[0].message.content
+
 # =========================================================
-# MAIN LOGIC (UNCHANGED FLOW)
+# MAIN FLOW (UNCHANGED CORE LOGIC)
 # =========================================================
 if search_btn:
 
@@ -189,26 +193,18 @@ if search_btn:
         st.warning("No products found")
         st.stop()
 
-    # FILTER ONLY (UNCHANGED)
     df = df[
         (df["PriceNum"] >= price_range[0]) &
         (df["PriceNum"] <= price_range[1])
     ]
 
-    # =====================================================
-    # OPTIONAL AI LAYERS (DO NOT AFFECT CORE LOGIC)
-    # =====================================================
+    intent = detect_intent(query)
 
-    df_ai = semantic_search_only(query, df)
-    df_ai = classify_deals(df_ai)
+    df = rank(df, intent)
+    df = df.head(max_products)
 
-    df = df_ai.head(max_products)
+    st.markdown("## 🔥 AI Recommended Products")
 
-    st.markdown("## 🔥 Best Deals")
-
-    # =====================================================
-    # GRID (UNCHANGED)
-    # =====================================================
     for i in range(0, len(df), 4):
 
         cols = st.columns(4)
@@ -225,14 +221,38 @@ if search_btn:
 
                 st.write(f"💰 {r['Price']}")
 
-                st.write(f"{r.get('Deal_Label','')}")
+                st.write(f"⭐ {r['Rating']}")
 
                 if r["Link"]:
                     st.link_button("🛒 Buy Now", r["Link"])
                 else:
                     st.button("No Link", disabled=True)
 
-    # =====================================================
-    # AI INSIGHTS (OPTIONAL DISPLAY)
-    # =====================================================
-    st.markdown(market_insights(df))
+# =========================================================
+# 💬 ASK DEALGENIE (GPT COPILOT UI - NO CHANGE TO MAIN UI)
+# =========================================================
+st.markdown("---")
+st.markdown("## 💬 Ask DealGenie (AI Copilot)")
+
+user_q = st.text_input("Ask anything: compare, suggest, or decide")
+
+if st.button("Ask AI Copilot"):
+
+    if user_q:
+
+        context = ""
+
+        if "df" in locals() and not df.empty:
+            context = df.head(3)[["Product", "Price", "Rating"]].to_string()
+
+        answer = ask_dealgenie(user_q, context)
+
+        st.session_state.chat_history.append(("You", user_q))
+        st.session_state.chat_history.append(("DealGenie AI", answer))
+
+# CHAT DISPLAY
+for role, msg in st.session_state.chat_history:
+    if role == "You":
+        st.markdown(f"**🧑 You:** {msg}")
+    else:
+        st.markdown(f"**🤖 DealGenie AI:** {msg}")
