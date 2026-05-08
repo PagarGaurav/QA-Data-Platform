@@ -25,7 +25,7 @@ st.markdown("""
 .hero {
     background:
     linear-gradient(90deg, rgba(0,0,0,0.88), rgba(0,0,0,0.45)),
-    url('https://images.unsplash.com/photo-1607082350899-7e105aa886ae');
+    url('https://images.unsplash.com/photo-1483985988355-763728e1935b');
     background-size:cover;
     background-position:center;
     padding:60px;
@@ -142,18 +142,21 @@ country = st.sidebar.selectbox(
     ["India", "US"]
 )
 
+# =========================================================
+# UPDATED LIMITS
+# =========================================================
 max_products = st.sidebar.slider(
     "Show Results",
     1,
-    5,
-    5
+    10,
+    10
 )
 
 price_range = st.sidebar.slider(
     "Price Range",
     500,
-    10000,
-    (500, 10000)
+    500000,
+    (500, 500000)
 )
 
 # =========================================================
