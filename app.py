@@ -4,20 +4,64 @@ import requests
 import re
 
 # =========================================================
-# CONFIG (KEEP DEFAULT THEME - NO COLOR BREAKING)
+# CONFIG (UNCHANGED UI)
 # =========================================================
 st.set_page_config(page_title="DealGenie", layout="wide")
 
 # =========================================================
-# HERO (UNCHANGED VISUAL)
+# YOUR ORIGINAL HERO (UNCHANGED)
 # =========================================================
 st.markdown("""
-# 🛍 DealGenie
-### AI Shopping Assistant
-""")
+<div class="hero">
+<h1>🛍 DealGenie</h1>
+<h3>AI Shopping Assistant</h3>
+</div>
+""", unsafe_allow_html=True)
 
 # =========================================================
-# SIDEBAR (FIX VISIBILITY ONLY - MINIMAL CSS)
+# ONLY FIX: CARD STABILITY CSS (NO COLOR / UI CHANGE)
+# =========================================================
+st.markdown("""
+<style>
+
+/* ONLY STRUCTURE FIX - NO DESIGN CHANGE */
+
+/* FORCE EQUAL CARD HEIGHT */
+.card {
+    height: 440px !important;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+/* FIX IMAGE HEIGHT */
+.card img {
+    height: 220px !important;
+    width: 100%;
+    object-fit: cover;
+}
+
+/* TITLE FIX (PREVENT EXPANSION) */
+.title {
+    height: 40px;
+    overflow: hidden;
+}
+
+/* RATING FIX (RESERVED SPACE) */
+.rating {
+    height: 18px;
+}
+
+/* PRICE FIX */
+.price {
+    min-height: 18px;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+# =========================================================
+# SIDEBAR (UNCHANGED)
 # =========================================================
 st.sidebar.markdown("## Filters")
 
@@ -80,30 +124,49 @@ if st.button("Search"):
     st.markdown("## 🔥 Top Deals")
 
     # =====================================================
-    # SAFE HORIZONTAL FEEL (STREAMLIT WAY)
+    # YOUR ORIGINAL GRID (UNCHANGED STRUCTURE)
     # =====================================================
+    for i in range(0, len(df), 4):
 
-    cols = st.columns(5)  # fixed stable grid instead of CSS scroll
+        cols = st.columns(4)
+        chunk = df.iloc[i:i+4]
 
-    for i, (_, r) in enumerate(df.iterrows()):
+        for col, (_, r) in zip(cols, chunk.iterrows()):
 
-        col = cols[i % 5]
+            with col:
 
-        with col:
+                st.markdown('<div class="card">', unsafe_allow_html=True)
 
-            st.image(r["Image"] if r["Image"] else "https://via.placeholder.com/300",
-                     use_container_width=True)
+                # IMAGE
+                st.image(
+                    r["Image"] if r["Image"] else "https://via.placeholder.com/300",
+                    use_container_width=True
+                )
 
-            st.markdown(f"**{str(r['Product'])[:55]}**")
+                # TITLE (FIXED SPACE ONLY)
+                st.markdown(
+                    f"<div class='title'>{r['Product']}</div>",
+                    unsafe_allow_html=True
+                )
 
-            st.write(f"💰 {r['Price']}")
+                # PRICE
+                st.markdown(
+                    f"<div class='price'>💰 {r['Price']}</div>",
+                    unsafe_allow_html=True
+                )
 
-            if r.get("Rating"):
-                st.write(f"⭐ {r['Rating']} / 5")
-            else:
-                st.write("")
+                # RATING (FIXED SPACE ONLY)
+                rating = r["Rating"] if r.get("Rating") else ""
 
-            if r["Link"]:
-                st.link_button("🛒 Buy Now", r["Link"])
-            else:
-                st.button("No Link", disabled=True)
+                st.markdown(
+                    f"<div class='rating'>{'⭐ ' + str(rating) + ' / 5' if rating else '&nbsp;'}</div>",
+                    unsafe_allow_html=True
+                )
+
+                # BUY BUTTON (UNCHANGED LOGIC)
+                if r["Link"]:
+                    st.link_button("🛒 Buy Now", r["Link"])
+                else:
+                    st.button("No Link", disabled=True)
+
+                st.markdown('</div>', unsafe_allow_html=True)
