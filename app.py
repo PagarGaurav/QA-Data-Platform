@@ -9,24 +9,23 @@ import re
 st.set_page_config(page_title="DealGenie", layout="wide")
 
 # =========================================================
-# YOUR ORIGINAL BLACK THEME (PRESERVED)
+# BLACK THEME (PRESERVED - NO CHANGES)
 # =========================================================
 st.markdown("""
 <style>
 
-/* BLACK THEME ONLY */
 .stApp {
     background: #0b0b0b;
     color: white;
 }
 
-/* SIDEBAR DARK (PRESERVED LOOK) */
+/* SIDEBAR DARK */
 section[data-testid="stSidebar"] {
     background-color: #111 !important;
     color: white;
 }
 
-/* HERO (unchanged look) */
+/* HERO */
 .hero {
     background: linear-gradient(90deg, rgba(0,0,0,0.85), rgba(0,0,0,0.4)),
     url('https://images.unsplash.com/photo-1607082350899-7e105aa886ae');
@@ -36,10 +35,7 @@ section[data-testid="stSidebar"] {
     margin-bottom: 20px;
 }
 
-/* =========================================================
-   ONLY FIX: CARD UNIFORM SIZE (NO COLOR CHANGE)
-   ========================================================= */
-
+/* CARD FIX (ONLY STABILITY) */
 .card {
     height: 440px;
     background: #141414;
@@ -77,7 +73,7 @@ section[data-testid="stSidebar"] {
     color: #aaa;
 }
 
-/* BUY BUTTON (RED BUT FITS BLACK THEME) */
+/* BUY BUTTON */
 .buy {
     display: block;
     margin-top: 10px;
@@ -98,7 +94,7 @@ section[data-testid="stSidebar"] {
 """, unsafe_allow_html=True)
 
 # =========================================================
-# HERO
+# HERO (UNCHANGED)
 # =========================================================
 st.markdown("""
 <div class="hero">
@@ -108,13 +104,26 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =========================================================
-# SIDEBAR (UNCHANGED)
+# SIDEBAR FILTERS (NEW ADDITIONS)
 # =========================================================
 st.sidebar.markdown("## Filters")
 
 api_key = st.sidebar.text_input("SerpAPI Key", type="password")
 country = st.sidebar.selectbox("Country", ["India", "US"])
+
+# 🔥 NEW FILTERS
+max_products = st.sidebar.slider("Max Products", 1, 5, 5)
+
+price_range = st.sidebar.slider(
+    "Price Range (₹)",
+    500,
+    10000,
+    (500, 10000)
+)
+
 query = st.text_input("Search Product")
+
+search_btn = st.button("Search")
 
 # =========================================================
 # FETCH DATA
@@ -154,7 +163,7 @@ def fetch(q, api_key, country):
 # =========================================================
 # MAIN
 # =========================================================
-if st.button("Search"):
+if search_btn:
 
     if not api_key or not query:
         st.warning("Enter API key + product")
@@ -166,12 +175,22 @@ if st.button("Search"):
         st.warning("No results found")
         st.stop()
 
-    df = df.sort_values("PriceNum").head(20)
+    # CLEAN PRICE
+    df["PriceNum"] = pd.to_numeric(df["PriceNum"], errors="coerce").fillna(0)
+
+    # PRICE FILTER (₹500 - ₹10K)
+    df = df[
+        (df["PriceNum"] >= price_range[0]) &
+        (df["PriceNum"] <= price_range[1])
+    ]
+
+    # LIMIT PRODUCTS (MAX 5)
+    df = df.head(max_products)
 
     st.markdown("## 🔥 Top Deals")
 
     # =====================================================
-    # STABLE GRID (NO LAYOUT SHIFT ANYMORE)
+    # STABLE GRID
     # =====================================================
     for i in range(0, len(df), 4):
 
@@ -189,11 +208,15 @@ if st.button("Search"):
                     use_container_width=True
                 )
 
-                st.markdown(f"<div class='title'>{r['Product']}</div>",
-                            unsafe_allow_html=True)
+                st.markdown(
+                    f"<div class='title'>{r['Product']}</div>",
+                    unsafe_allow_html=True
+                )
 
-                st.markdown(f"<div class='price'>💰 {r['Price']}</div>",
-                            unsafe_allow_html=True)
+                st.markdown(
+                    f"<div class='price'>💰 {r['Price']}</div>",
+                    unsafe_allow_html=True
+                )
 
                 rating = r["Rating"] if r.get("Rating") else ""
 
