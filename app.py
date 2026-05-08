@@ -2,15 +2,14 @@ import streamlit as st
 import pandas as pd
 import requests
 import re
-import streamlit.components.v1 as components
 
 # =========================================================
 # CONFIG
 # =========================================================
-st.set_page_config(page_title="DealGenie", layout="wide")
+st.set_page_config(page_title="DealGenie AI Brain", layout="wide")
 
 # =========================================================
-# THEME
+# UI
 # =========================================================
 st.markdown("""
 <style>
@@ -33,154 +32,71 @@ st.markdown("""
     background-size:cover;
     padding:60px;
     border-radius:20px;
-    margin-bottom:20px;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# =========================================================
-# HERO
-# =========================================================
 st.markdown("""
 <div class="hero">
-<h1>🛍 DealGenie</h1>
-<h3>Smart deals. Real insights.</h3>
+<h1>🧠 DealGenie AI Brain</h1>
+<h3>Real intelligent shopping system</h3>
 </div>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# SAFE STATE
+# STATE
 # =========================================================
-if "df" not in st.session_state:
-    st.session_state.df = None
-
 if "memory" not in st.session_state:
     st.session_state.memory = {"disliked": set()}
 
-st.session_state.memory.setdefault("disliked", set())
-
-if "last_q" not in st.session_state:
-    st.session_state.last_q = ""
-
-if "last_a" not in st.session_state:
-    st.session_state.last_a = ""
-
 # =========================================================
-# SIDEBAR
-# =========================================================
-api_key = st.sidebar.text_input("SerpAPI Key", type="password")
-country = st.sidebar.selectbox("Country", ["India", "US"])
-max_products = st.sidebar.slider("Deals", 5, 40, 5)
-
-query = st.text_input("🔎 Search Products")
-
-# =========================================================
-# 🎤 VOICE (CLEAN)
-# =========================================================
-voice_html = """
-<button onclick="startVoice()" style="
-background:#ff2d2d;
-color:white;
-padding:12px;
-border:none;
-border-radius:10px;
-font-weight:800;
-cursor:pointer;
-width:100%;
-font-size:16px;">
-Speak
-</button>
-
-<script>
-function startVoice() {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-    if (!SpeechRecognition) {
-        alert("Voice not supported");
-        return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = "en-US";
-    recognition.start();
-
-    recognition.onresult = function(event) {
-        const text = event.results[0][0].transcript;
-        const input = window.parent.document.querySelector('input[type="text"]');
-        input.value = text;
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-    };
-}
-</script>
-"""
-
-st.sidebar.markdown("## 🎤")
-components.html(voice_html, height=80)
-
-# =========================================================
-# INTENT DETECTION (KEY FIX)
+# INTENT DETECTION (IMPROVED)
 # =========================================================
 def detect_intent(q):
     q = q.lower()
 
-    if "tshirt" in q or "t-shirt" in q:
+    if any(x in q for x in ["tshirt", "t-shirt", "tee"]):
         return "tshirt"
-    if "shoe" in q or "sneaker" in q:
+    if any(x in q for x in ["shoe", "sneaker", "running", "footwear"]):
         return "shoes"
-    if "mobile" in q:
+    if "mobile" in q or "phone" in q:
         return "mobile"
     if "laptop" in q:
         return "laptop"
 
-    return None
+    return "generic"
 
+# =========================================================
+# SEMANTIC RELEVANCE SCORE (CORE UPGRADE)
+# =========================================================
+def relevance_score(title, intent):
 
-def filter_by_intent(df, intent):
+    t = str(title).lower()
 
-    if intent is None:
-        return df
-
-    mapping = {
-        "tshirt": ["tshirt", "t-shirt", "tee", "shirt"],
-        "shoes": ["shoe", "sneaker", "running"],
-        "mobile": ["mobile", "phone"],
-        "laptop": ["laptop"]
+    intent_keywords = {
+        "tshirt": ["tshirt", "t-shirt", "tee", "shirt", "polo"],
+        "shoes": ["shoe", "sneaker", "running", "trainer"],
+        "mobile": ["mobile", "phone", "smartphone"],
+        "laptop": ["laptop", "notebook"]
     }
 
-    keys = mapping.get(intent, [])
+    keywords = intent_keywords.get(intent, [])
 
-    mask = df["Product"].str.lower().apply(
-        lambda x: any(k in x for k in keys)
-    )
+    if not keywords:
+        return 0.5  # neutral
 
-    filtered = df[mask]
+    score = 0
 
-    return filtered if not filtered.empty else df
+    for k in keywords:
+        if k in t:
+            score += 1
 
-# =========================================================
-# HELPERS
-# =========================================================
-def price_num(x):
-    nums = re.sub(r"[^\d]", "", str(x))
-    return int(nums) if nums else 999999
-
-def safe_float(x):
-    try:
-        return float(x)
-    except:
-        return 0
-
-def reviews_num(x):
-    nums = re.sub(r"[^\d]", "", str(x))
-    return int(nums) if nums else 0
-
-def ai_score(row):
-    return (row["rating_num"] * 50) + (row["reviews_num"] / 100) - (row["price_num"] / 1000)
+    return score / len(keywords)
 
 # =========================================================
 # FETCH
 # =========================================================
-def fetch(q):
+def fetch(q, api_key, country):
 
     params = {
         "engine": "google_shopping",
@@ -202,102 +118,85 @@ def fetch(q):
             "Product": x.get("title"),
             "Price": x.get("price"),
             "Link": x.get("link"),
-            "Image": x.get("thumbnail") or "https://via.placeholder.com/300",
-            "price_num": price_num(x.get("price")),
-            "rating_num": safe_float(x.get("rating", 0)),
-            "reviews_num": reviews_num(x.get("reviews", 0))
+            "Image": x.get("thumbnail"),
+            "price_num": int(re.sub(r"[^\d]", "", str(x.get("price") or 999999)) or 999999),
+            "rating": float(x.get("rating") or 0),
+            "reviews": int(re.sub(r"[^\d]", "", str(x.get("reviews") or 0)) or 0)
         })
 
     return pd.DataFrame(items)
 
 # =========================================================
-# MEMORY FILTER
+# SMART AI SCORE (REAL RANKING ENGINE)
 # =========================================================
-def apply_memory(df):
-    disliked = st.session_state.memory.get("disliked", set())
+def ai_score(row, intent):
 
-    for b in disliked:
-        df = df[~df["Product"].str.lower().str.contains(b)]
+    relevance = relevance_score(row["Product"], intent)
 
-    return df if not df.empty else df
+    price_score = max(0, 1 - row["price_num"] / 10000)
+    rating_score = row["rating"] / 5
+    review_score = min(row["reviews"] / 1000, 1)
+
+    return (
+        (relevance * 0.5) +
+        (rating_score * 0.2) +
+        (review_score * 0.2) +
+        (price_score * 0.1)
+    )
 
 # =========================================================
-# AI ASSISTANT
+# ASSISTANT ENGINE
 # =========================================================
 def assistant(q, df):
 
-    if df is None or df.empty:
-        return "Search products first."
-
-    st.session_state.last_q = q
-
-    ql = q.lower()
-
-    # store dislikes
-    brands = ["puma", "nike", "adidas"]
-
-    for b in brands:
-        if f"dont want {b}" in ql or f"don't want {b}" in ql:
-            st.session_state.memory["disliked"].add(b)
-            return f"🚫 Will avoid {b}"
-
     intent = detect_intent(q)
 
-    df = filter_by_intent(df, intent)
-    df = apply_memory(df)
+    # FILTER BY INTENT (STRICT)
+    df = df[df["Product"].apply(lambda x: relevance_score(x, intent) > 0)]
 
     if df.empty:
-        return "❌ No relevant products found."
+        return "❌ No relevant products found"
 
-    best = df.sort_values("price_num").iloc[0]
+    # RANKING
+    df["score"] = df.apply(lambda r: ai_score(r, intent), axis=1)
 
-    return f"🔥 Best pick: {best['Product']}"
+    best = df.sort_values("score", ascending=False).iloc[0]
+
+    return f"""
+🧠 AI Recommendation
+
+👉 {best['Product']}
+💰 {best['Price']}
+
+💡 Why:
+- Matches your intent: {intent}
+- Best balance of relevance + rating + value
+"""
 
 # =========================================================
-# MAIN SEARCH
+# INPUTS
 # =========================================================
-if st.button("🚀 SEARCH DEALS"):
+api_key = st.sidebar.text_input("API Key", type="password")
+country = st.sidebar.selectbox("Country", ["India", "US"])
+
+query = st.text_input("🔎 Search anything")
+
+# =========================================================
+# MAIN
+# =========================================================
+if st.button("🚀 SEARCH"):
 
     if not api_key or not query:
-        st.warning("Enter API key + product")
+        st.warning("Enter API key + query")
         st.stop()
 
-    df = fetch(query)
+    df = fetch(query, api_key, country)
 
-    if df.empty:
-        st.warning("No results found")
-        st.stop()
+    intent = detect_intent(query)
 
-    df = apply_memory(df)
+    st.write("Detected Intent:", intent)
 
-    st.session_state.df = df
+    result = assistant(query, df)
 
-    best = df.iloc[0]
-
-    st.markdown("## 🔥 Best Deal")
-    st.image(best["Image"], width=300)
-    st.write(best["Product"])
-    st.write(best["Price"])
-    st.link_button("🛒 Buy Now", best["Link"])
-
-# =========================================================
-# AI PANEL (NO HISTORY)
-# =========================================================
-st.sidebar.markdown("## 🤖 DealGenie AI")
-
-ask = st.sidebar.text_input("Ask AI")
-
-if st.sidebar.button("Ask"):
-    df = st.session_state.get("df", None)
-    reply = assistant(ask, df)
-
-    st.session_state.last_a = reply
-
-# show last only
-if st.session_state.last_q:
-    st.sidebar.markdown("### 🧑 You")
-    st.sidebar.write(st.session_state.last_q)
-
-if st.session_state.last_a:
-    st.sidebar.markdown("### 🤖 DealGenie")
-    st.sidebar.write(st.session_state.last_a)
+    st.markdown("## 🤖 AI Result")
+    st.write(result)
