@@ -9,67 +9,98 @@ import re
 st.set_page_config(page_title="DealGenie", layout="wide")
 
 # =========================================================
-# BLACK THEME (PRESERVED)
+# BLACK THEME (UNCHANGED)
 # =========================================================
 st.markdown("""
 <style>
 
-/* MAIN BACKGROUND */
 .stApp {
     background: #0b0b0b;
     color: white;
 }
 
-/* SIDEBAR BACKGROUND */
 section[data-testid="stSidebar"] {
     background-color: #111 !important;
 }
 
-/* =========================================================
-   FIX: SIDEBAR TEXT VISIBILITY (SAFE VERSION)
-   ========================================================= */
-
-/* Labels (API Key, Country, sliders) */
+/* SIDEBAR FIX */
 section[data-testid="stSidebar"] label {
     color: white !important;
     font-weight: 600 !important;
 }
 
-/* Fix selectbox label specifically (Country issue fix) */
-section[data-testid="stSidebar"] div[data-testid="stSelectbox"] label {
-    color: white !important;
-}
-
-/* Sidebar headings */
 section[data-testid="stSidebar"] h1,
 section[data-testid="stSidebar"] h2,
 section[data-testid="stSidebar"] h3 {
     color: white !important;
 }
 
-/* Input fields */
 section[data-testid="stSidebar"] input {
     color: black !important;
     background-color: white !important;
 }
 
-/* Search button */
+/* BUTTON */
 .stButton > button {
     background-color: #ff2d2d !important;
     color: white !important;
     font-weight: 700 !important;
     border-radius: 8px !important;
     border: none !important;
-    padding: 10px 16px !important;
 }
 
 .stButton > button:hover {
     background-color: #ff0000 !important;
 }
 
-/* Images */
-img {
+/* CARD STABILITY */
+.card {
+    height: 440px;
+    background: #141414;
+    border-radius: 12px;
+    padding: 10px;
+    border: 1px solid #222;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.card img {
+    height: 220px;
+    width: 100%;
+    object-fit: cover;
     border-radius: 10px;
+}
+
+.title {
+    height: 40px;
+    overflow: hidden;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.price {
+    min-height: 18px;
+    color: #00ffae;
+    font-weight: 700;
+}
+
+.rating {
+    height: 18px;
+    font-size: 12px;
+    color: #aaa;
+}
+
+.buy {
+    display: block;
+    margin-top: 10px;
+    background: #ff2d2d;
+    color: white;
+    text-align: center;
+    padding: 8px;
+    border-radius: 8px;
+    font-weight: 700;
+    text-decoration: none;
 }
 
 </style>
@@ -80,7 +111,7 @@ img {
 # =========================================================
 st.markdown("""
 # 🛍 DealGenie
-### AI Shopping Assistant
+### AI Shopping Intelligence System
 """)
 
 # =========================================================
@@ -133,6 +164,79 @@ def fetch(q, api_key, country):
     return pd.DataFrame(items)
 
 # =========================================================
+# AI ENGINE (PRODUCTION CORE)
+# =========================================================
+def ai_engine(df):
+
+    if df.empty:
+        return df
+
+    df = df.copy()
+
+    df["PriceNum"] = pd.to_numeric(df["PriceNum"], errors="coerce").fillna(0)
+    df["Rating"] = pd.to_numeric(df["Rating"], errors="coerce").fillna(0)
+
+    max_price = df["PriceNum"].max() or 1
+
+    df["price_score"] = 1 - (df["PriceNum"] / max_price)
+    df["rating_score"] = df["Rating"] / 5
+
+    df["AI_Score"] = (df["price_score"] * 0.55 + df["rating_score"] * 0.45) * 100
+
+    def label(x):
+        if x >= 80:
+            return "🔥 Best Deal"
+        elif x >= 60:
+            return "👍 Good Deal"
+        elif x >= 40:
+            return "⚖️ Average"
+        else:
+            return "⚠️ Overpriced"
+
+    df["AI_Label"] = df["AI_Score"].apply(label)
+
+    def explain(row):
+        reasons = []
+        if row["price_score"] > 0.7:
+            reasons.append("Low price advantage")
+        if row["rating_score"] > 0.8:
+            reasons.append("High rating")
+        if row["PriceNum"] < df["PriceNum"].median():
+            reasons.append("Below market price")
+        return ", ".join(reasons) if reasons else "Standard product"
+
+    df["AI_Explain"] = df.apply(explain, axis=1)
+
+    return df.sort_values("AI_Score", ascending=False)
+
+# =========================================================
+# AI INSIGHTS
+# =========================================================
+def ai_insights(df):
+
+    if df.empty:
+        return ""
+
+    avg_price = df["PriceNum"].mean()
+    avg_rating = df["Rating"].mean()
+
+    best = df.iloc[0] if len(df) > 0 else None
+
+    return f"""
+### 🤖 AI Insights
+
+- 💰 Avg Price: ₹{int(avg_price)}
+- ⭐ Avg Rating: {round(avg_rating, 2)}
+
+### 🔥 Top Recommendation
+- {best['Product'] if best is not None else 'N/A'}
+- Score: {round(best['AI_Score'], 2) if best is not None else 'N/A'}
+
+### 📊 Market Insight
+- Value-based ranking performs better than price-only filtering
+"""
+
+# =========================================================
 # MAIN
 # =========================================================
 if search_btn:
@@ -147,19 +251,18 @@ if search_btn:
         st.warning("No results found")
         st.stop()
 
-    df["PriceNum"] = pd.to_numeric(df["PriceNum"], errors="coerce").fillna(0)
-
     # PRICE FILTER
     df = df[
         (df["PriceNum"] >= price_range[0]) &
         (df["PriceNum"] <= price_range[1])
     ]
 
-    df = df.head(max_products)
+    # AI PROCESSING
+    df = ai_engine(df).head(max_products)
 
-    st.markdown("## 🔥 Top Deals")
+    st.markdown("## 🔥 Top AI Deals")
 
-    # STABLE GRID
+    # GRID
     for i in range(0, len(df), 4):
 
         cols = st.columns(4)
@@ -178,10 +281,12 @@ if search_btn:
 
                 st.write(f"💰 {r['Price']}")
 
-                rating = r["Rating"] if r.get("Rating") else ""
-                st.write(f"{'⭐ ' + str(rating) + ' / 5' if rating else ''}")
+                st.write(f"{r['AI_Label']}")
 
                 if r["Link"]:
                     st.link_button("🛒 Buy Now", r["Link"])
                 else:
                     st.button("No Link", disabled=True)
+
+    # AI INSIGHTS
+    st.markdown(ai_insights(df))
