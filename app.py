@@ -19,13 +19,13 @@ st.set_page_config(
 st.markdown("""
 <style>
 .stApp {
-    background-color: #0b0f19;
+    background: linear-gradient(135deg,#070b14,#0f172a,#111827);
     color: white;
 }
 
 .stButton > button {
-    background: linear-gradient(90deg,#6366f1,#3b82f6);
-    color:white;
+    background: linear-gradient(90deg,#a855f7,#ec4899);
+    color:#f8fafc;
     border-radius:10px;
     border:none;
     padding:10px 16px;
@@ -33,29 +33,31 @@ st.markdown("""
 }
 
 .stDownloadButton > button {
-    background:white !important;
-    color:black !important;
+    background:#f8fafc !important;
+    color:#0f172a !important;
     border-radius:10px;
     font-weight:600;
 }
 
 section[data-testid="stSidebar"] {
-    background-color:#0b0f19 !important;
+    background: linear-gradient(180deg,#0f172a,#111827) !important;
 }
 
 .card {
-    background: linear-gradient(145deg,#111827,#1e293b);
+    background: rgba(17,24,39,0.75);
+    backdrop-filter: blur(16px);
     padding:22px;
     border-radius:20px;
     margin-bottom:22px;
-    border:1px solid #334155;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+    border:1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.35);
     transition: all 0.3s ease;
 }
 
 .card:hover {
     transform: translateY(-3px);
-    border:1px solid #6366f1;
+    border:1px solid #ec4899;
+    box-shadow:0 0 20px rgba(236,72,153,0.25);
 }
 
 .metric-card {
@@ -71,16 +73,16 @@ section[data-testid="stSidebar"] {
     background: linear-gradient(145deg,#1e293b,#0f172a);
     padding:18px;
     border-radius:16px;
-    border-left:5px solid #8b5cf6;
+    border-left:5px solid #ec4899;
     margin-bottom:18px;
     box-shadow: 0 6px 18px rgba(0,0,0,0.2);
 }
 
 .stTextInput input {
-    background:#111827 !important;
+    background:rgba(15,23,42,0.85) !important;
     color:white !important;
     border-radius:14px !important;
-    border:1px solid #334155 !important;
+    border:1px solid rgba(255,255,255,0.08) !important;
     padding:14px !important;
     font-size:16px !important;
 }
@@ -95,7 +97,8 @@ section[data-testid="stSidebar"] {
 }
 
 hr {
-    border-color:#1e293b !imp
+    border-color:#1e293b !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -104,16 +107,16 @@ hr {
 # =========================================================
 st.markdown("""
 <div style='text-align:center;padding:10px 0 25px 0;'>
-    <h1 style='font-size:52px;font-weight:800;margin-bottom:5px;'>🛍 DealGenie</h1>
-    <h3 style='color:#94a3b8;font-weight:400;'>AI Shopping Assistant</h3>
-    <p style='color:#64748b;font-size:18px;'>Compare real-time prices across top shopping platforms with AI-powered insights</p>
+    <h1 style='font-size:58px;font-weight:900;margin-bottom:5px;background:linear-gradient(90deg,#a855f7,#ec4899,#38bdf8);-webkit-background-clip:text;-webkit-text-fill-color:transparent;'>🛍 DealGenie</h1>
+    <h3 style='color:#cbd5e1;font-weight:500;letter-spacing:1px;'>AI Shopping Assistant</h3>
+    <p style='color:#94a3b8;font-size:18px;'>Compare products across brands with smart AI-powered shopping intelligence</p>
 </div>
 """, unsafe_allow_html=True)
 
 # =========================================================
 # SIDEBAR
 # =========================================================
-st.sidebar.title("⚙ Settings")
+st.sidebar.title("✨ Menu")
 
 api_key = st.sidebar.text_input(
     "🔑 SerpAPI Key",
