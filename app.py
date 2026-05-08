@@ -287,6 +287,9 @@ if st.button("🔎 Search Product"):
     # SAVE SESSION
     st.session_state["products_df"] = df
 
+    # CLEAR OLD AI OUTPUT
+    st.session_state["last_answer"] = ""
+
     st.markdown("## 🔥 Best Deals")
 
     df = df.reset_index(drop=True)
