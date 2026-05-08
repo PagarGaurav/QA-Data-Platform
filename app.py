@@ -26,37 +26,34 @@ section[data-testid="stSidebar"] {
 }
 
 /* =========================================================
-   FIX: SIDEBAR VISIBILITY ISSUE (NEW ADDITION ONLY)
+   FIX: SIDEBAR TEXT VISIBILITY (SAFE VERSION)
    ========================================================= */
 
-/* Labels (API Key, Country etc.) */
+/* Labels (API Key, Country, sliders) */
 section[data-testid="stSidebar"] label {
     color: white !important;
     font-weight: 600 !important;
 }
 
-/* Sidebar headers/text */
-section[data-testid="stSidebar"] h1,
-section[data-testid="stSidebar"] h2,
-section[data-testid="stSidebar"] h3,
-section[data-testid="stSidebar"] p {
+/* Fix selectbox label specifically (Country issue fix) */
+section[data-testid="stSidebar"] div[data-testid="stSelectbox"] label {
     color: white !important;
 }
 
-/* Input text */
+/* Sidebar headings */
+section[data-testid="stSidebar"] h1,
+section[data-testid="stSidebar"] h2,
+section[data-testid="stSidebar"] h3 {
+    color: white !important;
+}
+
+/* Input fields */
 section[data-testid="stSidebar"] input {
     color: black !important;
     background-color: white !important;
 }
 
-/* Selectbox text */
-section[data-testid="stSidebar"] div {
-    color: white !important;
-}
-
-/* =========================================================
-   SEARCH BUTTON FIX
-   ========================================================= */
+/* Search button */
 .stButton > button {
     background-color: #ff2d2d !important;
     color: white !important;
@@ -70,7 +67,7 @@ section[data-testid="stSidebar"] div {
     background-color: #ff0000 !important;
 }
 
-/* IMAGE */
+/* Images */
 img {
     border-radius: 10px;
 }
@@ -162,9 +159,7 @@ if search_btn:
 
     st.markdown("## 🔥 Top Deals")
 
-    # =====================================================
-    # STABLE GRID (UNCHANGED LOGIC)
-    # =====================================================
+    # STABLE GRID
     for i in range(0, len(df), 4):
 
         cols = st.columns(4)
