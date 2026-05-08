@@ -10,7 +10,7 @@ from openai import OpenAI
 st.set_page_config(page_title="DealGenie", layout="wide")
 
 # =========================================================
-# STYLE (YOUR ORIGINAL UI KEPT SAME)
+# STYLE (ONLY SIDEBAR BLACK + WHITE TEXT ADDED)
 # =========================================================
 st.markdown("""
 <style>
@@ -63,6 +63,34 @@ img {
     border-radius:10px;
 }
 
+/* =======================================================
+SIDEBAR BLACK THEME
+======================================================= */
+
+section[data-testid="stSidebar"] {
+    background-color:#000 !important;
+}
+
+section[data-testid="stSidebar"] * {
+    color:white !important;
+}
+
+/* INPUT TEXT */
+section[data-testid="stSidebar"] input {
+    color:white !important;
+    background:#111 !important;
+}
+
+/* SELECT BOX */
+section[data-testid="stSidebar"] div[data-baseweb="select"] {
+    background:#111 !important;
+}
+
+/* SLIDER */
+section[data-testid="stSidebar"] .stSlider {
+    color:white !important;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -77,7 +105,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =========================================================
-# SIDEBAR (UNCHANGED)
+# SIDEBAR
 # =========================================================
 st.sidebar.markdown("## ☰ Menu")
 
@@ -85,7 +113,14 @@ api_key = st.sidebar.text_input("SerpAPI Key", type="password")
 openai_key = st.sidebar.text_input("OpenAI API Key", type="password")
 
 country = st.sidebar.selectbox("Country", ["India", "US"])
-max_products = st.sidebar.slider("Show Results", 1, 5, 5)
+
+max_products = st.sidebar.slider(
+    "Show Results",
+    1,
+    5,
+    5
+)
+
 price_range = st.sidebar.slider(
     "Price Range",
     500,
@@ -147,7 +182,7 @@ def fetch(q, api_key, country):
     return pd.DataFrame(items)
 
 # =========================================================
-# AI COPILOT (ONLY LOGIC UPGRADE)
+# AI COPILOT
 # =========================================================
 def ask_dealgenie(question, context=""):
 
@@ -271,7 +306,7 @@ if st.button("🔎 Search Product"):
                 )
 
 # =========================================================
-# ASK DEALGENIE (UNCHANGED UI)
+# ASK DEALGENIE
 # =========================================================
 st.sidebar.markdown("---")
 st.sidebar.markdown("## 💬 Ask DealGenie")
