@@ -9,7 +9,7 @@ import re
 st.set_page_config(page_title="DealGenie", layout="wide")
 
 # =========================================================
-# UI THEME (UNCHANGED)
+# UI (UNCHANGED STABLE THEME)
 # =========================================================
 st.markdown("""
 <style>
@@ -28,134 +28,26 @@ section[data-testid="stSidebar"] label {
     font-weight: 600 !important;
 }
 
-section[data-testid="stSidebar"] h1,
-section[data-testid="stSidebar"] h2,
-section[data-testid="stSidebar"] h3 {
-    color: white !important;
-}
-
 section[data-testid="stSidebar"] input {
     color: black !important;
     background-color: white !important;
 }
 
-/* BUTTON */
 .stButton > button {
     background-color: #ff2d2d !important;
     color: white !important;
     font-weight: 700 !important;
     border-radius: 8px !important;
-    border: none !important;
-}
-
-/* CARD FIX (uniform size) */
-.card {
-    height: 450px;
-    background: #141414;
-    border-radius: 12px;
-    padding: 10px;
-    border: 1px solid #222;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-}
-
-.card img {
-    height: 220px;
-    width: 100%;
-    object-fit: cover;
-    border-radius: 10px;
 }
 
 </style>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# SaaS AI SERVICE LAYER (INDUSTRY STYLE)
-# =========================================================
-class DealGenieAIService:
-
-    def detect_intent(self, query):
-        q = query.lower()
-        if any(x in q for x in ["cheap", "budget", "low price"]):
-            return "BUDGET"
-        elif any(x in q for x in ["best", "top", "premium"]):
-            return "QUALITY"
-        elif "vs" in q:
-            return "COMPARISON"
-        return "BALANCED"
-
-    def rank(self, df, intent):
-
-        df = df.copy()
-
-        df["PriceNum"] = pd.to_numeric(df["PriceNum"], errors="coerce").fillna(0)
-        df["Rating"] = pd.to_numeric(df["Rating"], errors="coerce").fillna(0)
-
-        max_price = df["PriceNum"].max() or 1
-
-        df["price_score"] = 1 - (df["PriceNum"] / max_price)
-        df["rating_score"] = df["Rating"] / 5
-
-        if intent == "BUDGET":
-            w1, w2 = 0.75, 0.25
-        elif intent == "QUALITY":
-            w1, w2 = 0.3, 0.7
-        else:
-            w1, w2 = 0.55, 0.45
-
-        df["AI_Score"] = (df["price_score"] * w1 + df["rating_score"] * w2) * 100
-
-        def label(x):
-            if x >= 80:
-                return "🔥 Best Deal"
-            elif x >= 60:
-                return "👍 Good Deal"
-            elif x >= 40:
-                return "⚖️ Average"
-            else:
-                return "⚠️ Overpriced"
-
-        df["AI_Label"] = df["AI_Score"].apply(label)
-
-        return df.sort_values("AI_Score", ascending=False)
-
-    def detect_anomalies(self, df):
-
-        mean = df["PriceNum"].mean()
-
-        def flag(x):
-            if x > mean * 1.8:
-                return "🚨 Overpriced"
-            elif x < mean * 0.4:
-                return "⚠️ Suspicious"
-            return "Normal"
-
-        df["Anomaly"] = df["PriceNum"].apply(flag)
-
-        return df
-
-    def explain(self, row):
-
-        reasons = []
-
-        if row["price_score"] > 0.7:
-            reasons.append("Low price advantage")
-        if row["rating_score"] > 0.8:
-            reasons.append("High rating")
-        if row["PriceNum"] < 3000:
-            reasons.append("Budget-friendly")
-
-        return " | ".join(reasons) if reasons else "Standard pick"
-
-
-ai = DealGenieAIService()
-
-# =========================================================
-# HERO
+# HEADER
 # =========================================================
 st.markdown("# 🛍 DealGenie")
-st.markdown("### AI Shopping Intelligence SaaS System")
+st.markdown("### AI Shopping Assistant")
 
 # =========================================================
 # SIDEBAR
@@ -206,7 +98,55 @@ def fetch(q, api_key, country):
     return pd.DataFrame(items)
 
 # =========================================================
-# MAIN PIPELINE
+# LIGHT AI (SAFE VERSION)
+# =========================================================
+
+def detect_intent(q):
+    q = q.lower()
+    if "cheap" in q or "budget" in q:
+        return "BUDGET"
+    elif "best" in q or "top" in q:
+        return "QUALITY"
+    return "BALANCED"
+
+
+def score(df, intent):
+
+    df = df.copy()
+
+    df["PriceNum"] = pd.to_numeric(df["PriceNum"], errors="coerce").fillna(0)
+    df["Rating"] = pd.to_numeric(df["Rating"], errors="coerce").fillna(0)
+
+    max_price = df["PriceNum"].max() or 1
+
+    df["price_score"] = 1 - (df["PriceNum"] / max_price)
+    df["rating_score"] = df["Rating"] / 5
+
+    if intent == "BUDGET":
+        w1, w2 = 0.75, 0.25
+    elif intent == "QUALITY":
+        w1, w2 = 0.3, 0.7
+    else:
+        w1, w2 = 0.55, 0.45
+
+    df["AI_Score"] = (df["price_score"] * w1 + df["rating_score"] * w2) * 100
+
+    return df.sort_values("AI_Score", ascending=False)
+
+
+def explain(row):
+
+    reasons = []
+
+    if row["price_score"] > 0.7:
+        reasons.append("Good price value")
+    if row["rating_score"] > 0.8:
+        reasons.append("High rating")
+
+    return " | ".join(reasons) if reasons else "Standard product"
+
+# =========================================================
+# MAIN
 # =========================================================
 if search_btn:
 
@@ -217,7 +157,7 @@ if search_btn:
     df = fetch(query, api_key, country)
 
     if df.empty:
-        st.warning("No results found")
+        st.warning("No products found")
         st.stop()
 
     # FILTER
@@ -226,21 +166,15 @@ if search_btn:
         (df["PriceNum"] <= price_range[1])
     ]
 
-    # ============================
-    # AI SaaS PIPELINE
-    # ============================
-    intent = ai.detect_intent(query)
-
-    df = ai.rank(df, intent)
-    df = ai.detect_anomalies(df)
+    # SAFE AI PIPELINE
+    intent = detect_intent(query)
+    df = score(df, intent)
 
     df = df.head(max_products)
 
-    st.markdown("## 🔥 AI Ranked Deals")
+    st.markdown("## 🔥 Best Deals")
 
-    # =====================================================
     # STABLE GRID
-    # =====================================================
     for i in range(0, len(df), 4):
 
         cols = st.columns(4)
@@ -250,8 +184,6 @@ if search_btn:
 
             with col:
 
-                st.markdown('<div class="card">', unsafe_allow_html=True)
-
                 st.image(r["Image"] if r["Image"] else "https://via.placeholder.com/300",
                          use_container_width=True)
 
@@ -259,13 +191,11 @@ if search_btn:
 
                 st.write(f"💰 {r['Price']}")
 
-                st.write(f"{r['AI_Label']}")
+                st.write(f"⭐ {r['Rating'] if r['Rating'] else 'N/A'}")
 
-                st.caption(f"🧠 {ai.explain(r)}")
+                st.caption(explain(r))
 
                 if r["Link"]:
                     st.link_button("🛒 Buy Now", r["Link"])
                 else:
                     st.button("No Link", disabled=True)
-
-                st.markdown('</div>', unsafe_allow_html=True)
