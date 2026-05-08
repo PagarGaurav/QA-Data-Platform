@@ -2,11 +2,12 @@ import streamlit as st
 import pandas as pd
 import requests
 import re
+import streamlit.components.v1 as components
 
 # =========================================================
 # CONFIG
 # =========================================================
-st.set_page_config(page_title="DealGenie Copilot AI", layout="wide")
+st.set_page_config(page_title="DealGenie AI Shopping", layout="wide")
 
 # =========================================================
 # THEME
@@ -25,7 +26,6 @@ st.markdown("""
     color:white;
     font-weight:800;
     border-radius:10px;
-    width:100%;
 }
 
 .hero {
@@ -45,8 +45,8 @@ st.markdown("""
 # =========================================================
 st.markdown("""
 <div class="hero">
-<h1>🛍 DealGenie Copilot AI</h1>
-<h3>Smart shopping assistant with real decision power</h3>
+<h1>🛍 DealGenie AI Shopping</h1>
+<h3>Smart deals. Real insights. Human-like assistant.</h3>
 </div>
 """, unsafe_allow_html=True)
 
@@ -63,16 +63,63 @@ if "memory" not in st.session_state:
     st.session_state.memory = {"disliked": set()}
 
 # =========================================================
-# SIDEBAR SETTINGS
+# INPUTS
 # =========================================================
 api_key = st.sidebar.text_input("SerpAPI Key", type="password")
 country = st.sidebar.selectbox("Country", ["India", "US"])
 max_products = st.sidebar.slider("Deals shown", 5, 40, 5)
 
-# =========================================================
-# MAIN SEARCH
-# =========================================================
 query = st.text_input("🔎 Search Products")
+
+# =========================================================
+# VOICE INPUT (REAL BROWSER SPEECH API)
+# =========================================================
+st.markdown("### 🎤 Voice Search")
+
+voice_html = """
+<button onclick="startDictation()" style="
+background:#ff2d2d;
+color:white;
+padding:10px;
+border:none;
+border-radius:8px;
+font-weight:700;
+cursor:pointer;
+">
+🎤 Speak
+</button>
+
+<script>
+function startDictation() {
+    if (window.hasOwnProperty('webkitSpeechRecognition')) {
+        var recognition = new webkitSpeechRecognition();
+
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        recognition.lang = "en-US";
+
+        recognition.start();
+
+        recognition.onresult = function(e) {
+            var text = e.results[0][0].transcript;
+
+            // Send to Streamlit input box
+            const input = window.parent.document.querySelector('input[type="text"]');
+            input.value = text;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        };
+
+        recognition.onerror = function(e) {
+            alert("Voice error: " + e.error);
+        };
+    } else {
+        alert("Voice not supported in this browser");
+    }
+}
+</script>
+"""
+
+components.html(voice_html, height=80)
 
 # =========================================================
 # HELPERS
@@ -95,7 +142,7 @@ def ai_score(row):
     return (row["rating_num"] * 50) + (row["reviews_num"] / 100) - (row["price_num"] / 1000)
 
 # =========================================================
-# FETCH
+# FETCH DATA
 # =========================================================
 def fetch(q):
 
@@ -131,83 +178,81 @@ def fetch(q):
     return pd.DataFrame(items)
 
 # =========================================================
-# RENDER
+# HUMAN FILTER MEMORY
 # =========================================================
-def row(title, items):
-    st.markdown(f"## {title}")
-    cols = st.columns(4)
+def apply_memory(df):
+    disliked = st.session_state.memory.get("disliked", set())
 
-    for i, r in enumerate(items):
-        with cols[i % 4]:
-            st.image(r["Image"], use_container_width=True)
-            st.write(r["Product"])
-            st.write(r["Price"])
-            st.link_button("🛒 Buy", r["Link"])
+    for b in disliked:
+        df = df[~df["Product"].str.lower().str.contains(b)]
+
+    return df if not df.empty else df
 
 # =========================================================
-# HUMAN AI ENGINE
+# WHY BUY
 # =========================================================
-def copilot_response(q, df):
+def why_buy(r):
+    if r["rating_num"] >= 4.3:
+        return "Highly trusted by buyers"
+    if r["reviews_num"] > 1000:
+        return "Very popular choice"
+    if r["price_num"] < 2000:
+        return "Great value"
+    return "Balanced option"
+
+# =========================================================
+# AI ASSISTANT (HUMAN STYLE)
+# =========================================================
+def assistant(q, df):
 
     if df is None or df.empty:
-        return "⚠️ Please search products first."
+        return "Search products first."
 
     ql = q.lower()
 
-    # -----------------------------
-    # DISLIKE BRAND MEMORY
-    # -----------------------------
     brands = ["puma", "nike", "adidas", "reebok"]
 
     for b in brands:
         if f"dont want {b}" in ql or f"don't want {b}" in ql:
             st.session_state.memory["disliked"].add(b)
-            return f"🚫 Noted: I will avoid {b} products."
+            return f"🚫 Got it. I will avoid {b} products."
 
-    filtered = df.copy()
+    df = apply_memory(df)
 
-    for b in st.session_state.memory["disliked"]:
-        filtered = filtered[~filtered["Product"].str.lower().str.contains(b)]
-
-    if filtered.empty:
-        filtered = df
-
-    # -----------------------------
-    # COMPARE
-    # -----------------------------
     if "compare" in ql or "vs" in ql:
-        top = filtered.sort_values("ai_score", ascending=False).head(2)
+        top = df.sort_values("ai_score", ascending=False).head(2)
 
         if len(top) < 2:
-            return "Not enough products to compare."
+            return "Not enough products."
 
         a, b = top.iloc[0], top.iloc[1]
 
         return f"""
 🆚 Comparison:
 
-👉 {a['Product']} → Better overall value  
-👉 {b['Product']} → Alternative option  
+👉 {a['Product']} (Better overall)
+👉 {b['Product']} (Alternative)
 
-🏆 Winner: {a['Product']}
+🏆 Recommendation: {a['Product']}
 """
 
-    # -----------------------------
-    # BUDGET
-    # -----------------------------
     if "under" in ql or "budget" in ql:
-        best = filtered.sort_values("price_num").head(3)
+        best = df.sort_values("price_num").head(3)
         return "💸 Budget picks:\n" + "\n".join(best["Product"])
 
-    # -----------------------------
-    # DEFAULT BEST
-    # -----------------------------
-    best = filtered.sort_values("ai_score", ascending=False).iloc[0]
+    best = df.sort_values("ai_score", ascending=False).iloc[0]
 
-    return f"🔥 Best pick: {best['Product']} ({best['Price']})"
+    return f"""
+🔥 Best Pick:
+
+👉 {best['Product']}
+💰 {best['Price']}
+
+🧠 {why_buy(best)}
+"""
 
 # =========================================================
-# MAIN SEARCH BUTTON
+# MAIN SEARCH
 # =========================================================
 if st.button("🚀 SEARCH DEALS"):
 
@@ -223,6 +268,8 @@ if st.button("🚀 SEARCH DEALS"):
 
     df["ai_score"] = df.apply(ai_score, axis=1)
 
+    df = apply_memory(df)
+
     st.session_state.df = df
 
     pool = df.sort_values("ai_score", ascending=False).head(max_products).to_dict("records")
@@ -235,31 +282,32 @@ if st.button("🚀 SEARCH DEALS"):
     st.write(featured["Price"])
     st.link_button("🛒 Buy Now", featured["Link"])
 
-    row("🧠 AI Picks", pool[:2])
-    row("💸 Budget", pool[2:4])
-    row("⭐ Top", pool[4:6])
+    cols = st.columns(3)
+
+    for i, r in enumerate(pool[:6]):
+        with cols[i % 3]:
+            st.image(r["Image"], use_container_width=True)
+            st.write(r["Product"])
+            st.write(r["Price"])
+            st.link_button("Buy", r["Link"])
 
 # =========================================================
-# COPILOT PANEL (IMPORTANT FIX)
+# ASSISTANT PANEL (SIDE)
 # =========================================================
-st.sidebar.markdown("## 🤖 Copilot AI")
+st.sidebar.markdown("## 🤖 DealGenie AI Assistant")
 
-copilot_input = st.sidebar.text_input("Ask Copilot")
+ask = st.sidebar.text_input("Ask anything (compare / best / budget / brand)")
 
-copilot_btn = st.sidebar.button("💬 Ask AI")
-
-if copilot_btn and copilot_input:
+if st.sidebar.button("Ask AI"):
 
     df = st.session_state.get("df", None)
 
-    reply = copilot_response(copilot_input, df)
+    reply = assistant(ask, df)
 
-    st.session_state.chat.append(("you", copilot_input))
+    st.session_state.chat.append(("you", ask))
     st.session_state.chat.append(("ai", reply))
 
-# =========================================================
 # CHAT DISPLAY
-# =========================================================
 for r in st.session_state.chat:
     if r[0] == "you":
         st.sidebar.markdown(f"🧑 {r[1]}")
