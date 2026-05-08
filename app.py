@@ -84,8 +84,10 @@ section[data-testid="stSidebar"] input{
 }
 
 section[data-testid="stSidebar"] button{
-    background-color:#000 !important;
+    background-color:#ff2d2d !important;
+    color:white !important;
     border:none !important;
+    font-weight:700 !important;
 }
 
 section[data-testid="stSidebar"] button svg{
@@ -126,7 +128,7 @@ section[data-testid="stSidebar"] div[data-baseweb="select"] > div{
 # =========================================================
 st.markdown("""
 <div class="hero">
-<h1>🛍 DealGenie AI Shopping</h1>
+<h1>🛍 DealGenie</h1>
 <h3>Smart deals. Real savings. Best prices online.</h3>
 </div>
 """, unsafe_allow_html=True)
@@ -180,11 +182,9 @@ client = OpenAI(api_key=openai_key) if openai_key else None
 # =========================================================
 def get_store_name(source, link):
 
-    # PRIMARY STORE NAME
     if source:
         return source
 
-    # FALLBACK FROM URL
     if link:
 
         domain = urlparse(link).netloc.lower()
@@ -333,37 +333,24 @@ if st.button("🔎 Search Product"):
         st.warning("No products found")
         st.stop()
 
-    # PRICE FILTER
     df = df[
         (df["PriceNum"] >= price_range[0]) &
         (df["PriceNum"] <= price_range[1])
     ]
 
-    # LIMIT
     df = df.head(max_products)
 
-    # RESET INDEX
     df = df.reset_index(drop=True)
 
-    # =====================================================
-    # FIXED LOGIC
-    # =====================================================
-
-    # CHEAPEST PRODUCT
     cheapest_index = df["PriceNum"].idxmin()
 
-    # BEST RATED PRODUCT
     best_rated_index = df["RatingNum"].idxmax()
 
-    # SESSION
     st.session_state["products_df"] = df
     st.session_state["last_answer"] = ""
 
     st.markdown("## 🔥 Best Deals")
 
-    # =====================================================
-    # GRID
-    # =====================================================
     for i in range(0, len(df), 3):
 
         cols = st.columns(3)
@@ -395,30 +382,25 @@ if st.button("🔎 Search Product"):
                 )
 
                 st.write(f"💰 {r['Price']}")
-
                 st.write(f"⭐ {r['Rating']}")
 
-                # STORE NAME
                 st.markdown(
                     f"<div class='portal'>🛒 {r['Store']}</div>",
                     unsafe_allow_html=True
                 )
 
-                # CHEAPEST
                 if idx == cheapest_index:
                     st.markdown(
                         "<div class='badge'>💰 Cheapest Deal</div>",
                         unsafe_allow_html=True
                     )
 
-                # BEST RATED
                 if idx == best_rated_index:
                     st.markdown(
                         "<div class='badge'>🏆 Best Rated</div>",
                         unsafe_allow_html=True
                     )
 
-                # BUY BUTTON
                 if r["Link"]:
 
                     st.link_button(
