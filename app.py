@@ -10,7 +10,7 @@ from openai import OpenAI
 st.set_page_config(page_title="DealGenie", layout="wide")
 
 # =========================================================
-# UI FIX (SIDEBAR VISIBILITY + SCROLL)
+# UI FIX (VISIBILITY + SIDEBAR TEXT FIX)
 # =========================================================
 st.markdown("""
 <style>
@@ -27,17 +27,20 @@ section[data-testid="stSidebar"] {
     max-height: 100vh !important;
 }
 
-section[data-testid="stSidebar"] * {
-    color: white !important;
+/* FIX LABEL VISIBILITY (Country, API text, etc.) */
+section[data-testid="stSidebar"] label {
+    color: #ffffff !important;
+    opacity: 1 !important;
+    font-weight: 600 !important;
 }
 
-/* INPUT FIX */
+/* INPUT BOX */
 section[data-testid="stSidebar"] input {
     color: black !important;
     background-color: white !important;
 }
 
-/* BUTTON FIX */
+/* BUTTON */
 .stButton > button {
     background-color: #ff2d2d !important;
     color: white !important;
@@ -59,7 +62,7 @@ st.markdown("# 🛍 DealGenie")
 st.markdown("### 🧠 DealGenie AI Shopping Assistant")
 
 # =========================================================
-# SIDEBAR INPUTS
+# SIDEBAR
 # =========================================================
 st.sidebar.markdown("## Filters")
 
@@ -74,21 +77,12 @@ query = st.text_input("Search Product")
 search_btn = st.button("Search")
 
 # =========================================================
-# OPENAI CLIENT (SAFE)
+# OPENAI CLIENT
 # =========================================================
 client = OpenAI(api_key=openai_key) if openai_key else None
 
 # =========================================================
-# SESSION STATE FIX
-# =========================================================
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
-
-if "last_answer" not in st.session_state:
-    st.session_state.last_answer = ""
-
-# =========================================================
-# FETCH PRODUCTS
+# DATA FETCH
 # =========================================================
 def fetch(q, api_key, country):
 
@@ -134,14 +128,8 @@ def ask_dealgenie(question, context=""):
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {
-                    "role": "system",
-                    "content": "You are DealGenie AI Shopping Assistant. Help users choose and compare products."
-                },
-                {
-                    "role": "user",
-                    "content": f"{question}\n\nContext:\n{context}"
-                }
+                {"role": "system", "content": "You are DealGenie AI Shopping Assistant."},
+                {"role": "user", "content": f"{question}\n\nContext:\n{context}"}
             ]
         )
         return response.choices[0].message.content
@@ -199,44 +187,32 @@ if search_btn:
                     st.button("No Link", disabled=True)
 
 # =========================================================
-# 💬 SIDEBAR COPILOT (FULLY FIXED)
+# 💬 ASK DEALGENIE (LATEST ONLY - NO HISTORY)
 # =========================================================
 st.sidebar.markdown("---")
 st.sidebar.markdown("## 💬 Ask DealGenie")
 
 user_q = st.sidebar.text_input("Ask anything", key="chat_input")
-
 ask_btn = st.sidebar.button("Ask Assistant")
 
-if ask_btn:
+if "last_answer" not in st.session_state:
+    st.session_state.last_answer = ""
 
-    if user_q.strip():
+if ask_btn and user_q.strip():
 
-        context = ""
+    context = ""
 
-        if not df.empty:
-            context = df.head(5)[["Product", "Price", "Rating"]].to_string()
+    if not df.empty:
+        context = df.head(5)[["Product", "Price", "Rating"]].to_string()
 
-        answer = ask_dealgenie(user_q, context)
+    answer = ask_dealgenie(user_q, context)
 
-        st.session_state.last_answer = answer
-        st.session_state.chat_history.append(("You", user_q))
-        st.session_state.chat_history.append(("AI", answer))
+    # ONLY KEEP LATEST (NO HISTORY)
+    st.session_state.last_answer = answer
 
 # =========================================================
-# DISPLAY LAST ANSWER (FIXED ISSUE)
+# SHOW ONLY LAST ANSWER
 # =========================================================
 if st.session_state.last_answer:
     st.sidebar.markdown("### 🧠 Latest Answer")
     st.sidebar.write(st.session_state.last_answer)
-
-# =========================================================
-# CHAT HISTORY
-# =========================================================
-st.sidebar.markdown("### 🧾 History")
-
-for role, msg in st.session_state.chat_history[-10:]:
-    if role == "You":
-        st.sidebar.markdown(f"🧑 {msg}")
-    else:
-        st.sidebar.markdown(f"🤖 {msg}")
