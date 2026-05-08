@@ -65,41 +65,42 @@ img {
 }
 
 /* =======================================================
-SIDEBAR FIX
+SIDEBAR BLACK THEME
 ======================================================= */
 
 section[data-testid="stSidebar"] {
     background:#000 !important;
 }
 
-/* FIX ALL SIDEBAR TEXT */
+/* TEXT */
 section[data-testid="stSidebar"] * {
     color:white !important;
 }
 
-/* FIX INPUT TEXT */
+/* INPUT */
 section[data-testid="stSidebar"] input {
     background:#111 !important;
     color:white !important;
 }
 
-/* FIX SELECTBOX */
+/* SELECT BOX */
 section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
     background:#111 !important;
     color:white !important;
 }
 
-/* FIX DROPDOWN TEXT */
-section[data-testid="stSidebar"] span {
-    color:white !important;
+/* PASSWORD EYE ICON FIX */
+section[data-testid="stSidebar"] button[kind="secondary"] svg {
+    stroke: white !important;
+    fill: white !important;
 }
 
-/* FIX PASSWORD EYE ICON */
+/* FALLBACK SVG FIX */
 section[data-testid="stSidebar"] svg {
-    fill:white !important;
+    stroke: white !important;
 }
 
-/* FIX SLIDER */
+/* SLIDER */
 section[data-testid="stSidebar"] .stSlider {
     color:white !important;
 }
@@ -283,9 +284,6 @@ if st.button("🔎 Search Product"):
 
     df = df.reset_index(drop=True)
 
-    # =====================================================
-    # PRODUCT GRID
-    # =====================================================
     for i in range(0, len(df), 3):
 
         row = df.iloc[i:i+3]
