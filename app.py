@@ -41,7 +41,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =========================================================
-# HERO (UPDATED BRANDING)
+# HERO
 # =========================================================
 st.markdown("""
 <div class="hero">
@@ -51,13 +51,15 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =========================================================
-# SESSION STATE (NO HISTORY)
+# SAFE SESSION STATE
 # =========================================================
 if "df" not in st.session_state:
     st.session_state.df = None
 
 if "memory" not in st.session_state:
-    st.session_state.memory = {"disliked": set()}
+    st.session_state.memory = {}
+
+st.session_state.memory.setdefault("disliked", set())
 
 if "last_q" not in st.session_state:
     st.session_state.last_q = ""
@@ -66,29 +68,30 @@ if "last_a" not in st.session_state:
     st.session_state.last_a = ""
 
 # =========================================================
-# INPUTS
+# SIDEBAR INPUTS
 # =========================================================
 api_key = st.sidebar.text_input("SerpAPI Key", type="password")
 country = st.sidebar.selectbox("Country", ["India", "US"])
-max_products = st.sidebar.slider("Deals shown", 5, 40, 5)
+max_products = st.sidebar.slider("Deals", 5, 40, 5)
 
 query = st.text_input("🔎 Search Products")
 
 # =========================================================
-# 🎤 VOICE FIX (WORKING VERSION)
+# 🎤 VOICE (CLEAN SIDEBAR BUTTON ONLY)
 # =========================================================
 voice_html = """
 <button onclick="startVoice()" style="
 background:#ff2d2d;
 color:white;
-padding:10px;
+padding:12px;
 border:none;
-border-radius:8px;
-font-weight:700;
+border-radius:10px;
+font-weight:800;
 cursor:pointer;
 width:100%;
+font-size:16px;
 ">
-🎤 Speak
+Speak
 </button>
 
 <script>
@@ -115,7 +118,7 @@ function startVoice() {
 </script>
 """
 
-st.sidebar.markdown("## 🎤 Voice Search")
+st.sidebar.markdown("## 🎤")
 components.html(voice_html, height=80)
 
 # =========================================================
@@ -175,11 +178,15 @@ def fetch(q):
     return pd.DataFrame(items)
 
 # =========================================================
-# MEMORY FILTER
+# MEMORY FILTER (SAFE)
 # =========================================================
 def apply_memory(df):
-    for b in st.session_state.memory["disliked"]:
+
+    disliked = st.session_state.memory.get("disliked", set())
+
+    for b in disliked:
         df = df[~df["Product"].str.lower().str.contains(b)]
+
     return df if not df.empty else df
 
 # =========================================================
@@ -195,7 +202,7 @@ def why_buy(r):
     return "Balanced option"
 
 # =========================================================
-# AI ENGINE (NO HISTORY LOGIC)
+# AI ASSISTANT (LAST ONLY)
 # =========================================================
 def assistant(q, df):
 
@@ -204,7 +211,6 @@ def assistant(q, df):
 
     ql = q.lower()
 
-    # store last only
     st.session_state.last_q = q
 
     brands = ["puma", "nike", "adidas", "reebok"]
@@ -212,7 +218,7 @@ def assistant(q, df):
     for b in brands:
         if f"dont want {b}" in ql or f"don't want {b}" in ql:
             st.session_state.memory["disliked"].add(b)
-            return f"🚫 I will avoid {b}"
+            return f"🚫 Will avoid {b}"
 
     df = apply_memory(df)
 
@@ -260,22 +266,23 @@ if st.button("🚀 SEARCH DEALS"):
     st.link_button("🛒 Buy Now", featured["Link"])
 
 # =========================================================
-# AI PANEL (LAST ONLY)
+# AI PANEL (LAST ONLY, NO HISTORY)
 # =========================================================
 st.sidebar.markdown("## 🤖 DealGenie AI")
 
-ask = st.sidebar.text_input("Ask anything")
+ask = st.sidebar.text_input("Ask")
 
-if st.sidebar.button("Ask"):
+if st.sidebar.button("Ask AI"):
 
     df = st.session_state.get("df", None)
 
     reply = assistant(ask, df)
 
-    # overwrite ONLY last
     st.session_state.last_a = reply
 
+# =========================================================
 # SHOW ONLY LAST Q/A
+# =========================================================
 if st.session_state.last_q:
     st.sidebar.markdown("### 🧑 You")
     st.sidebar.write(st.session_state.last_q)
