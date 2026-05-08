@@ -9,7 +9,7 @@ import re
 st.set_page_config(page_title="DealGenie AI Shopping", layout="wide")
 
 # =========================================================
-# DARK AI SHOPPING THEME
+# THEME
 # =========================================================
 st.markdown("""
 <style>
@@ -31,28 +31,13 @@ st.markdown("""
 /* HERO */
 .hero {
     background: linear-gradient(90deg,#000,rgba(0,0,0,0.3)),
-    url('https://images.unsplash.com/photo-1518770660439-4636190af475');
+    url('https://images.unsplash.com/photo-1607082349566-187342175e2f');
     background-size:cover;
     padding:60px;
     border-radius:20px;
     margin-bottom:20px;
 }
 
-/* CARD */
-.card {
-    background:#111;
-    border-radius:14px;
-    overflow:hidden;
-    border:1px solid #222;
-    transition:0.3s;
-}
-
-.card:hover {
-    transform:scale(1.03);
-    border:1px solid #ff2d2d;
-}
-
-/* ROW */
 .row {
     display:flex;
     overflow-x:auto;
@@ -61,10 +46,6 @@ st.markdown("""
 
 .row::-webkit-scrollbar {
     display:none;
-}
-
-.item {
-    min-width:220px;
 }
 
 </style>
@@ -85,7 +66,7 @@ st.markdown("""
 # =========================================================
 api_key = st.sidebar.text_input("SerpAPI Key", type="password")
 country = st.sidebar.selectbox("Country", ["India", "US"])
-max_products = st.sidebar.slider("How many deals you want?", 5, 40, 10)
+max_products = st.sidebar.slider("How many deals you want?", 5, 40, 5)
 
 query = st.text_input("Search Product")
 
@@ -110,26 +91,6 @@ def ai_score(row):
     return (row["rating_num"] * 50) + (row["reviews_num"] / 100) - (row["price_num"] / 1000)
 
 # =========================================================
-# WHY BUY INSIGHT ENGINE
-# =========================================================
-def why_buy(row):
-    reasons = []
-
-    if row["rating_num"] >= 4:
-        reasons.append("Highly rated by buyers")
-    if row["reviews_num"] > 500:
-        reasons.append("Trusted by many users")
-    if row["price_num"] < 2000:
-        reasons.append("Budget-friendly price")
-    if "amazon" in str(row["Platform"]).lower():
-        reasons.append("Reliable marketplace")
-
-    if not reasons:
-        reasons.append("Balanced choice across price and rating")
-
-    return " • " + " | ".join(reasons)
-
-# =========================================================
 # FETCH DATA
 # =========================================================
 def fetch(q):
@@ -145,7 +106,7 @@ def fetch(q):
     r = requests.get("https://serpapi.com/search", params=params)
     data = r.json()
 
-    results = data.get("shopping_results", [])[:max_products]
+    results = data.get("shopping_results", [])[:50]
 
     items = []
 
@@ -166,27 +127,24 @@ def fetch(q):
     return pd.DataFrame(items)
 
 # =========================================================
-# ROW RENDER
+# RENDER CARD ROW
 # =========================================================
-def row(title, df):
+def row(title, items):
+
+    if not items:
+        return
 
     st.markdown(f"## {title}")
-
     cols = st.columns(4)
 
-    for i, (_, r) in enumerate(df.iterrows()):
+    for i, r in enumerate(items):
 
         with cols[i % 4]:
-
             st.image(r["Image"], use_container_width=True)
-
             st.markdown(f"### {r['Product'][:50]}")
             st.write(f"🏬 {r['Platform']}")
             st.write(f"💰 {r['Price']}")
             st.write(f"⭐ {r['Rating']}")
-
-            st.caption(why_buy(r))   # 👈 NEW INSIGHT
-
             st.link_button("🛒 Buy Now", r["Link"])
 
 # =========================================================
@@ -200,42 +158,47 @@ if st.button("🚀 Discover Smart Deals"):
 
     df = fetch(query)
 
+    if df.empty:
+        st.warning("No products found")
+        st.stop()
+
     df["ai_score"] = df.apply(ai_score, axis=1)
 
-    # APPLY FILTER STRICTLY
-    df = df.head(max_products)
+    # =====================================================
+    # STRICT LIMIT POOL (NO OVERFLOW)
+    # =====================================================
+    pool = df.sort_values("ai_score", ascending=False).head(max_products).to_dict("records")
 
     # =========================
-    # FEATURED DEAL
+    # FEATURED
     # =========================
-    featured = df.iloc[0]
+    featured = pool.pop(0)
 
     st.markdown("## 🔥 Best Deal Today")
-
     st.image(featured["Image"], width=300)
-
     st.markdown(f"### {featured['Product']}")
     st.write(f"💰 {featured['Price']}")
     st.write(f"⭐ {featured['Rating']}")
-
-    st.caption("💡 Why this deal: " + why_buy(featured))
-
     st.link_button("🛒 Buy Now", featured["Link"])
 
     # =========================
-    # AI RECOMMENDED
+    # SPLIT REMAINING STRICTLY
     # =========================
-    row("🧠 AI Recommended Picks",
-        df.sort_values("ai_score", ascending=False).head(8))
+    ai_rec = pool[:2]
+    pool = pool[2:]
+
+    budget = pool[:2]
+    pool = pool[2:]
+
+    top_rated = pool[:1]
+    pool = pool[1:]
+
+    trending = pool[:1]
 
     # =========================
-    # OTHER ROWS
+    # ROWS (NO DUPLICATES, HARD LIMIT RESPECTED)
     # =========================
-    row("💸 Budget Friendly Deals",
-        df.sort_values("price_num").head(8))
-
-    row("⭐ Top Rated Products",
-        df.sort_values("rating_num", ascending=False).head(8))
-
-    row("🔥 Most Popular",
-        df.sort_values("reviews_num", ascending=False).head(8))
+    row("🧠 AI Recommended", ai_rec)
+    row("💸 Budget Deals", budget)
+    row("⭐ Top Rated", top_rated)
+    row("🔥 Trending", trending)
