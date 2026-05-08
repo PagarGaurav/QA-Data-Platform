@@ -20,7 +20,6 @@ st.markdown("""
     font-family: Arial;
 }
 
-/* BUTTON */
 .stButton > button {
     background:#ff2d2d;
     color:white;
@@ -28,7 +27,6 @@ st.markdown("""
     border-radius:10px;
 }
 
-/* HERO */
 .hero {
     background: linear-gradient(90deg,#000,rgba(0,0,0,0.3)),
     url('https://images.unsplash.com/photo-1607082349566-187342175e2f');
@@ -36,13 +34,6 @@ st.markdown("""
     padding:60px;
     border-radius:20px;
     margin-bottom:20px;
-}
-
-/* CARD */
-.card {
-    background:#111;
-    border-radius:14px;
-    border:1px solid #222;
 }
 
 </style>
@@ -54,9 +45,19 @@ st.markdown("""
 st.markdown("""
 <div class="hero">
 <h1>🛍 DealGenie AI Shopping</h1>
-<h3>Smart deals. Real insights. AI-powered decisions.</h3>
+<h3>Smart deals. Better decisions. Real AI insights.</h3>
 </div>
 """, unsafe_allow_html=True)
+
+# =========================================================
+# SIDEBAR AI ASSISTANT (FIXED)
+# =========================================================
+st.sidebar.markdown("## 💬 AI Shopping Assistant")
+
+if "chat" not in st.session_state:
+    st.session_state.chat = []
+
+user_q = st.sidebar.text_input("Ask AI (best under 1000 / compare / top deal)")
 
 # =========================================================
 # INPUTS
@@ -87,20 +88,23 @@ def reviews_num(x):
 def ai_score(row):
     return (row["rating_num"] * 50) + (row["reviews_num"] / 100) - (row["price_num"] / 1000)
 
+# =========================================================
+# WHY BUY LOGIC
+# =========================================================
 def why_buy(r):
     reasons = []
     if r["rating_num"] >= 4:
         reasons.append("Highly rated")
     if r["reviews_num"] > 500:
-        reasons.append("Trusted by users")
+        reasons.append("Trusted")
     if r["price_num"] < 2000:
-        reasons.append("Budget-friendly")
+        reasons.append("Budget friendly")
     if not reasons:
-        reasons.append("Balanced choice")
+        reasons.append("Balanced option")
     return " | ".join(reasons)
 
 # =========================================================
-# FETCH
+# FETCH DATA
 # =========================================================
 def fetch(q):
 
@@ -136,7 +140,7 @@ def fetch(q):
     return pd.DataFrame(items)
 
 # =========================================================
-# RENDER ROW
+# ROW RENDER
 # =========================================================
 def row(title, items):
 
@@ -157,36 +161,26 @@ def row(title, items):
             st.link_button("🛒 Buy Now", r["Link"])
 
 # =========================================================
-# AI ASSISTANT
+# AI ENGINE (SIDEBAR CHAT)
 # =========================================================
-def assistant(query, df):
-
-    q = query.lower()
+def ai_reply(q, df):
 
     if df is None or df.empty:
         return "Search products first."
 
+    q = q.lower()
+
     if "vs" in q or "compare" in q:
         top = df.sort_values("ai_score", ascending=False).head(2)
         a, b = top.iloc[0], top.iloc[1]
-        return f"""
-🆚 Comparison:
-
-👉 {a['Product']} (Better overall value)
-👉 {b['Product']} (Cheaper option)
-
-🏆 Winner: {a['Product']}
-"""
+        return f"🆚 {a['Product']} is better overall than {b['Product']}"
 
     if "under" in q or "budget" in q:
         best = df.sort_values("price_num").head(3)
-        text = "💸 Budget Picks:\n"
-        for _, r in best.iterrows():
-            text += f"- {r['Product']} ({r['Price']})\n"
-        return text
+        return "💸 " + ", ".join(best["Product"].tolist())
 
     best = df.sort_values("ai_score", ascending=False).iloc[0]
-    return f"🔥 Best: {best['Product']} ({best['Price']})"
+    return f"🔥 Best pick: {best['Product']}"
 
 # =========================================================
 # MAIN
@@ -205,7 +199,6 @@ if st.button("🚀 Discover Smart Deals"):
 
     df["ai_score"] = df.apply(ai_score, axis=1)
 
-    # STRICT LIMIT
     pool = df.sort_values("ai_score", ascending=False).head(max_products).to_dict("records")
 
     featured = pool.pop(0)
@@ -232,24 +225,24 @@ if st.button("🚀 Discover Smart Deals"):
     row("⭐ Top Rated", top)
     row("🔥 Trending", trending)
 
-    # =====================================================
-    # AI CHAT
-    # =====================================================
-    st.markdown("---")
-    st.markdown("## 💬 Ask DealGenie AI Assistant")
+    # store df globally for chat
+    st.session_state.df = df
 
-    if "chat" not in st.session_state:
-        st.session_state.chat = []
+# =========================================================
+# SIDEBAR CHAT EXECUTION
+# =========================================================
+if user_q:
 
-    user_q = st.text_input("Ask: best under 1000 / compare / worth it?")
+    df = st.session_state.get("df", None)
 
-    if user_q:
-        reply = assistant(user_q, df)
-        st.session_state.chat.append(("you", user_q))
-        st.session_state.chat.append(("ai", reply))
+    reply = ai_reply(user_q, df)
 
-    for r in st.session_state.chat:
-        if r[0] == "you":
-            st.markdown(f"🧑 **You:** {r[1]}")
-        else:
-            st.markdown(f"🤖 **AI:** {r[1]}")
+    st.session_state.chat.append(("you", user_q))
+    st.session_state.chat.append(("ai", reply))
+
+# SHOW CHAT IN SIDEBAR
+for r in st.session_state.chat:
+    if r[0] == "you":
+        st.sidebar.markdown(f"🧑 {r[1]}")
+    else:
+        st.sidebar.markdown(f"🤖 {r[1]}")
