@@ -9,12 +9,12 @@ import re
 st.set_page_config(page_title="DealGenie", layout="wide")
 
 # =========================================================
-# GLOBAL SAFE STYLE FIX
+# SAFE UI STYLE (STABILITY FIX)
 # =========================================================
 st.markdown("""
 <style>
 
-/* MAIN BACKGROUND */
+/* APP */
 .stApp {
     background: #0b0b0b;
     color: white;
@@ -35,43 +35,19 @@ section[data-testid="stSidebar"] {
     background-color: #111 !important;
 }
 
-/* Sidebar text visible */
-section[data-testid="stSidebar"] label,
-section[data-testid="stSidebar"] span,
-section[data-testid="stSidebar"] p {
-    color: white !important;
-    opacity: 1 !important;
-}
-
-/* Sidebar input text */
-section[data-testid="stSidebar"] input {
-    color: black !important;
-}
-
-/* SEARCH BUTTON FIX */
-.stButton > button {
-    background-color: #ff2d2d !important;
-    color: white !important;
-    font-weight: 700 !important;
-    border-radius: 8px !important;
-    border: none !important;
-    padding: 10px 16px !important;
-}
-
-.stButton > button:hover {
-    background-color: #ff0000 !important;
-}
-
-/* CARD STYLE */
+/* CARD FIXED HEIGHT */
 .card {
     background: #141414;
     border-radius: 12px;
     padding: 10px;
-    height: 430px;
+    height: 440px;
     border: 1px solid #222;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
 }
 
-/* IMAGE FIX */
+/* IMAGE FIXED SIZE */
 .card img {
     height: 220px;
     width: 100%;
@@ -79,23 +55,33 @@ section[data-testid="stSidebar"] input {
     border-radius: 10px;
 }
 
-/* TITLE FIX */
+/* TITLE FIXED (NO GROWTH) */
 .title {
     font-size: 13px;
     font-weight: 600;
-    height: 42px;
+    height: 38px;
     overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
 }
 
-/* RATING FIX */
+/* PRICE */
+.price {
+    min-height: 18px;
+    color: #00ffae;
+    font-weight: 700;
+}
+
+/* RATING FIXED SPACE */
 .rating {
     height: 18px;
     font-size: 12px;
     color: #aaa;
 }
 
-/* BUY BUTTON (RED FIXED) */
-.buy-btn {
+/* BUY BUTTON */
+.buy {
     display: block;
     margin-top: 10px;
     background: #ff2d2d;
@@ -107,7 +93,7 @@ section[data-testid="stSidebar"] input {
     text-decoration: none;
 }
 
-.buy-btn:hover {
+.buy:hover {
     background: #ff0000;
 }
 
@@ -120,7 +106,7 @@ section[data-testid="stSidebar"] input {
 st.markdown("""
 <div class="hero">
 <h1>🛍 DealGenie</h1>
-<h3>AI Shopping Assistant — Find Best Deals Instantly</h3>
+<h3>AI Shopping Assistant</h3>
 </div>
 """, unsafe_allow_html=True)
 
@@ -132,7 +118,8 @@ st.sidebar.markdown("## Filters")
 api_key = st.sidebar.text_input("SerpAPI Key", type="password")
 country = st.sidebar.selectbox("Country", ["India", "US"])
 max_products = st.sidebar.slider("Products", 4, 24, 12)
-query = st.text_input("🔎 Search Product")
+
+query = st.text_input("Search Product")
 
 # =========================================================
 # FETCH DATA
@@ -186,10 +173,10 @@ if st.button("Search"):
 
     df = df.sort_values("PriceNum").head(max_products)
 
-    st.markdown("## 🔥 Top Deals")
+    st.markdown("## Top Deals")
 
     # =====================================================
-    # STABLE GRID
+    # STABLE GRID (FIXED ALIGNMENT)
     # =====================================================
     for i in range(0, len(df), 4):
 
@@ -202,26 +189,35 @@ if st.button("Search"):
 
                 st.markdown('<div class="card">', unsafe_allow_html=True)
 
+                # IMAGE
                 st.image(
                     r["Image"] if r["Image"] else "https://via.placeholder.com/300",
                     use_container_width=True
                 )
 
-                st.markdown(f"<div class='title'>{str(r['Product'])[:55]}</div>",
-                            unsafe_allow_html=True)
+                # TITLE (FIXED HEIGHT)
+                st.markdown(f"""
+                <div class="title">{r['Product'] if r['Product'] else ''}</div>
+                """, unsafe_allow_html=True)
 
-                st.write(f"💰 {r['Price']}")
+                # PRICE
+                st.markdown(f"""
+                <div class="price">💰 {r['Price']}</div>
+                """, unsafe_allow_html=True)
 
+                # RATING (FIXED SPACE ALWAYS)
                 rating = r["Rating"] if r.get("Rating") else ""
-                st.markdown(
-                    f"<div class='rating'>{'⭐ ' + str(rating) + ' / 5' if rating else '&nbsp;'}</div>",
-                    unsafe_allow_html=True
-                )
 
-                # RED BUY BUTTON (FIXED)
+                st.markdown(f"""
+                <div class="rating">
+                {'⭐ ' + str(rating) + ' / 5' if rating else '&nbsp;'}
+                </div>
+                """, unsafe_allow_html=True)
+
+                # BUY BUTTON
                 if r["Link"]:
                     st.markdown(f"""
-                    <a class="buy-btn" href="{r['Link']}" target="_blank">
+                    <a class="buy" href="{r['Link']}" target="_blank">
                         🛒 Buy Now
                     </a>
                     """, unsafe_allow_html=True)
