@@ -4,117 +4,20 @@ import requests
 import re
 
 # =========================================================
-# CONFIG
+# CONFIG (KEEP DEFAULT THEME - NO COLOR BREAKING)
 # =========================================================
 st.set_page_config(page_title="DealGenie", layout="wide")
 
 # =========================================================
-# SAFE STYLE (NO GRID ISSUES ANYMORE)
+# HERO (UNCHANGED VISUAL)
 # =========================================================
 st.markdown("""
-<style>
-
-.stApp {
-    background: #0b0b0b;
-    color: white;
-}
-
-/* HERO (unchanged style feel) */
-.hero {
-    background: linear-gradient(90deg, rgba(0,0,0,0.85), rgba(0,0,0,0.4)),
-    url('https://images.unsplash.com/photo-1607082350899-7e105aa886ae');
-    background-size: cover;
-    padding: 50px;
-    border-radius: 20px;
-    margin-bottom: 20px;
-}
-
-/* HORIZONTAL SCROLL ROW */
-.row {
-    display: flex;
-    overflow-x: auto;
-    gap: 15px;
-    padding: 10px 5px;
-}
-
-.row::-webkit-scrollbar {
-    display: none;
-}
-
-/* FIXED CARD (NO SHIFT POSSIBLE NOW) */
-.card {
-    min-width: 240px;
-    max-width: 240px;
-    background: #141414;
-    border-radius: 12px;
-    padding: 10px;
-    flex-shrink: 0;
-    height: 420px;
-    border: 1px solid #222;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-}
-
-.card img {
-    height: 220px;
-    width: 100%;
-    object-fit: cover;
-    border-radius: 10px;
-}
-
-.title {
-    font-size: 13px;
-    font-weight: 600;
-    height: 38px;
-    overflow: hidden;
-}
-
-.rating {
-    height: 18px;
-    font-size: 12px;
-    color: #aaa;
-}
-
-.buy {
-    display: block;
-    margin-top: 10px;
-    background: #ff2d2d;
-    color: white;
-    text-align: center;
-    padding: 8px;
-    border-radius: 8px;
-    font-weight: 700;
-    text-decoration: none;
-}
-
-.buy:hover {
-    background: #ff0000;
-}
-
-.ai-box {
-    margin-top: 25px;
-    padding: 15px;
-    background: #111;
-    border-radius: 12px;
-    border: 1px solid #222;
-}
-
-</style>
-""", unsafe_allow_html=True)
+# 🛍 DealGenie
+### AI Shopping Assistant
+""")
 
 # =========================================================
-# HERO
-# =========================================================
-st.markdown("""
-<div class="hero">
-<h1>🛍 DealGenie</h1>
-<h3>AI Shopping Assistant</h3>
-</div>
-""", unsafe_allow_html=True)
-
-# =========================================================
-# SIDEBAR
+# SIDEBAR (FIX VISIBILITY ONLY - MINIMAL CSS)
 # =========================================================
 st.sidebar.markdown("## Filters")
 
@@ -177,44 +80,30 @@ if st.button("Search"):
     st.markdown("## 🔥 Top Deals")
 
     # =====================================================
-    # HORIZONTAL UI (NO MORE ALIGNMENT ISSUES EVER)
+    # SAFE HORIZONTAL FEEL (STREAMLIT WAY)
     # =====================================================
-    st.markdown('<div class="row">', unsafe_allow_html=True)
 
-    for _, r in df.iterrows():
+    cols = st.columns(5)  # fixed stable grid instead of CSS scroll
 
-        st.markdown(f"""
-        <div class="card">
-            <img src="{r['Image'] if r['Image'] else 'https://via.placeholder.com/300'}">
+    for i, (_, r) in enumerate(df.iterrows()):
 
-            <div class="title">
-                {r['Product'][:60]}
-            </div>
+        col = cols[i % 5]
 
-            <div>💰 {r['Price']}</div>
+        with col:
 
-            <div class="rating">
-                {'⭐ ' + str(r['Rating']) + ' / 5' if r.get('Rating') else '&nbsp;'}
-            </div>
+            st.image(r["Image"] if r["Image"] else "https://via.placeholder.com/300",
+                     use_container_width=True)
 
-            <a class="buy" href="{r['Link']}" target="_blank">
-                🛒 Buy Now
-            </a>
-        </div>
-        """, unsafe_allow_html=True)
+            st.markdown(f"**{str(r['Product'])[:55]}**")
 
-    st.markdown('</div>', unsafe_allow_html=True)
+            st.write(f"💰 {r['Price']}")
 
-    # =====================================================
-    # AI INSIGHTS SECTION (BELOW PRODUCTS)
-    # =====================================================
-    st.markdown("## 🤖 AI Insights")
+            if r.get("Rating"):
+                st.write(f"⭐ {r['Rating']} / 5")
+            else:
+                st.write("")
 
-    st.markdown("""
-    <div class="ai-box">
-        🔥 Best deals are concentrated in mid-range pricing products.<br>
-        💡 High-rated products are slightly more expensive but more reliable.<br>
-        📉 You can save more by filtering below top-rated 4.0 threshold.<br>
-        🧠 Recommendation: Focus on top 20% lowest price + rating combo.
-    </div>
-    """, unsafe_allow_html=True)
+            if r["Link"]:
+                st.link_button("🛒 Buy Now", r["Link"])
+            else:
+                st.button("No Link", disabled=True)
