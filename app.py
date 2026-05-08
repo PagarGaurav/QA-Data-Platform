@@ -134,6 +134,15 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =========================================================
+# SESSION INIT
+# =========================================================
+if "products_df" not in st.session_state:
+    st.session_state["products_df"] = pd.DataFrame()
+
+if "last_answer" not in st.session_state:
+    st.session_state["last_answer"] = ""
+
+# =========================================================
 # SIDEBAR
 # =========================================================
 st.sidebar.markdown("## ☰ Menu")
@@ -178,7 +187,7 @@ query = st.text_input("🔎 Search Product")
 client = OpenAI(api_key=openai_key) if openai_key else None
 
 # =========================================================
-# STORE NAME FIX
+# STORE NAME
 # =========================================================
 def get_store_name(source, link):
 
@@ -281,35 +290,46 @@ def ask_dealgenie(question, context=""):
     if client is None:
         return "⚠️ Enter OpenAI API key."
 
+    if context.strip() == "":
+        return "⚠️ Search products first."
+
     try:
 
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
+
                 {
-                    "role":"system",
-                    "content":"""
+                    "role": "system",
+                    "content": """
 You are DealGenie AI Shopping Assistant.
 
-Recommend:
-- Best product
-- Cheapest product
-- Best rated product
-- Best store
+IMPORTANT:
+- ONLY answer from CURRENT product search results.
+- NEVER use previous searches or memory.
+- If question is unrelated, ask user to search product first.
 
-Keep answers short.
+Return:
+1. Best Product
+2. Cheapest Product
+3. Best Rated Product
+4. Best Store
+
+Keep answers concise.
 """
                 },
-                {
-                    "role":"user",
-                    "content":f"""
-Question:
-{question}
 
-Products:
+                {
+                    "role": "user",
+                    "content": f"""
+Current Product Search Results:
 {context}
+
+User Question:
+{question}
 """
                 }
+
             ]
         )
 
@@ -319,7 +339,7 @@ Products:
         return f"⚠️ Error: {str(e)}"
 
 # =========================================================
-# SEARCH
+# SEARCH PRODUCTS
 # =========================================================
 if st.button("🔎 Search Product"):
 
@@ -333,24 +353,31 @@ if st.button("🔎 Search Product"):
         st.warning("No products found")
         st.stop()
 
+    # FILTER PRICE
     df = df[
         (df["PriceNum"] >= price_range[0]) &
         (df["PriceNum"] <= price_range[1])
     ]
 
+    # LIMIT
     df = df.head(max_products)
 
+    # RESET INDEX
     df = df.reset_index(drop=True)
 
+    # TAGS
     cheapest_index = df["PriceNum"].idxmin()
-
     best_rated_index = df["RatingNum"].idxmax()
 
+    # SAVE SESSION
     st.session_state["products_df"] = df
     st.session_state["last_answer"] = ""
 
     st.markdown("## 🔥 Best Deals")
 
+    # =====================================================
+    # PRODUCT GRID
+    # =====================================================
     for i in range(0, len(df), 3):
 
         cols = st.columns(3)
@@ -382,6 +409,7 @@ if st.button("🔎 Search Product"):
                 )
 
                 st.write(f"💰 {r['Price']}")
+
                 st.write(f"⭐ {r['Rating']}")
 
                 st.markdown(
@@ -389,12 +417,14 @@ if st.button("🔎 Search Product"):
                     unsafe_allow_html=True
                 )
 
+                # CHEAPEST TAG
                 if idx == cheapest_index:
                     st.markdown(
                         "<div class='badge'>💰 Cheapest Deal</div>",
                         unsafe_allow_html=True
                     )
 
+                # BEST RATED TAG
                 if idx == best_rated_index:
                     st.markdown(
                         "<div class='badge'>🏆 Best Rated</div>",
@@ -429,10 +459,7 @@ user_q = st.sidebar.text_input(
 # =========================================================
 if st.sidebar.button("Ask Assistant"):
 
-    df_context = st.session_state.get(
-        "products_df",
-        pd.DataFrame()
-    )
+    df_context = st.session_state["products_df"]
 
     context = ""
 
@@ -452,7 +479,7 @@ if st.sidebar.button("Ask Assistant"):
 # =========================================================
 # AI OUTPUT
 # =========================================================
-if st.session_state.get("last_answer"):
+if st.session_state["last_answer"]:
 
     st.sidebar.markdown("### 🧠 AI Insight")
 
