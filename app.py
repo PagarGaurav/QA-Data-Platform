@@ -60,7 +60,7 @@ st.markdown("### AI Shopping Copilot")
 st.sidebar.markdown("## Filters")
 
 api_key = st.sidebar.text_input("SerpAPI Key", type="password")
-openai_key = st.sidebar.text_input("OpenAI API Key (for Copilot)", type="password")
+openai_key = st.sidebar.text_input("OpenAI API Key", type="password")
 
 country = st.sidebar.selectbox("Country", ["India", "US"])
 max_products = st.sidebar.slider("Max Products", 1, 5, 5)
@@ -70,9 +70,15 @@ query = st.text_input("Search Product")
 search_btn = st.button("Search")
 
 # =========================================================
-# OPENAI CLIENT (RUNTIME SAFE)
+# OPENAI CLIENT (SAFE INIT)
 # =========================================================
 client = OpenAI(api_key=openai_key) if openai_key else None
+
+# =========================================================
+# SESSION STATE (IMPORTANT FIX)
+# =========================================================
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
 
 # =========================================================
 # FETCH DATA
@@ -110,7 +116,7 @@ def fetch(q, api_key, country):
     return pd.DataFrame(items)
 
 # =========================================================
-# AI CORE (UNCHANGED LOGIC STYLE)
+# AI LOGIC (UNCHANGED)
 # =========================================================
 def detect_intent(q):
     q = q.lower()
@@ -145,31 +151,34 @@ def rank(df, intent):
     return df.sort_values("AI_Score", ascending=False)
 
 # =========================================================
-# 🧠 GPT COPILOT (SAFE RUNTIME MODE)
+# 🧠 GPT COPILOT (FIXED + SAFE)
 # =========================================================
 def ask_dealgenie(question, context=""):
 
     if client is None:
         return "⚠️ Enter OpenAI API key in sidebar to enable AI Copilot."
 
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {
-                "role": "system",
-                "content": "You are DealGenie AI Shopping Copilot. Help users choose products, compare, and decide."
-            },
-            {
-                "role": "user",
-                "content": f"{question}\n\nContext:\n{context}"
-            }
-        ]
-    )
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are DealGenie AI Copilot. Help users choose products, compare them, and suggest best value options clearly."
+                },
+                {
+                    "role": "user",
+                    "content": f"{question}\n\nContext:\n{context}"
+                }
+            ]
+        )
+        return response.choices[0].message.content
 
-    return response.choices[0].message.content
+    except Exception as e:
+        return f"⚠️ GPT Error: {str(e)}"
 
 # =========================================================
-# MAIN FLOW (UNCHANGED)
+# MAIN FLOW
 # =========================================================
 if search_btn:
 
@@ -219,22 +228,30 @@ if search_btn:
                     st.button("No Link", disabled=True)
 
 # =========================================================
-# 💬 ASK DEALGENIE COPILOT (NEW ADDITION ONLY)
+# 💬 ASK DEALGENIE (FIXED WORKING COPILOT)
 # =========================================================
 st.markdown("---")
 st.markdown("## 💬 Ask DealGenie (AI Copilot)")
 
-user_q = st.text_input("Ask: compare, suggest, or decide")
+user_q = st.text_input("Ask: compare, suggest, or decide", key="copilot_input")
 
 if st.button("Ask AI Copilot"):
 
-    if user_q:
+    if user_q.strip():
 
         context = ""
-        if "df" in locals() and not df.empty:
-            context = df.head(3)[["Product", "Price", "Rating"]].to_string()
+
+        if "df" in locals() and df is not None and not df.empty:
+            context = df.head(5)[["Product", "Price", "Rating"]].to_string()
 
         answer = ask_dealgenie(user_q, context)
 
-        st.markdown("### 🤖 DealGenie AI Response")
-        st.write(answer)
+        st.session_state.chat_history.append(("You", user_q))
+        st.session_state.chat_history.append(("DealGenie", answer))
+
+# CHAT DISPLAY (PERSISTENT FIX)
+for role, msg in st.session_state.chat_history:
+    if role == "You":
+        st.markdown(f"**🧑 You:** {msg}")
+    else:
+        st.markdown(f"**🤖 DealGenie:** {msg}")
