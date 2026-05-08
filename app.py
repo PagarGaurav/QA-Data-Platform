@@ -10,26 +10,29 @@ from openai import OpenAI
 st.set_page_config(page_title="DealGenie", layout="wide")
 
 # =========================================================
-# UI FIX (VISIBILITY + SIDEBAR TEXT FIX)
+# UI FIX (IMPORTANT: DO NOT OVER-OVERRIDE SIDEBAR TEXT)
 # =========================================================
 st.markdown("""
 <style>
 
+/* APP BACKGROUND */
 .stApp {
     background: #0b0b0b;
     color: white;
 }
 
-/* SIDEBAR FIX */
+/* SIDEBAR BASE FIX */
 section[data-testid="stSidebar"] {
     background-color: #111 !important;
     overflow-y: auto !important;
     max-height: 100vh !important;
+    padding: 10px;
 }
 
-/* FIX LABEL VISIBILITY (Country, API text, etc.) */
-section[data-testid="stSidebar"] label {
-    color: #ffffff !important;
+/* FIX LABEL VISIBILITY (CRITICAL) */
+section[data-testid="stSidebar"] label,
+section[data-testid="stSidebar"] .stMarkdown {
+    color: white !important;
     opacity: 1 !important;
     font-weight: 600 !important;
 }
@@ -48,6 +51,7 @@ section[data-testid="stSidebar"] input {
     border-radius: 8px !important;
 }
 
+/* IMAGE */
 img {
     border-radius: 10px;
 }
@@ -82,7 +86,13 @@ search_btn = st.button("Search")
 client = OpenAI(api_key=openai_key) if openai_key else None
 
 # =========================================================
-# DATA FETCH
+# STATE
+# =========================================================
+if "last_answer" not in st.session_state:
+    st.session_state.last_answer = ""
+
+# =========================================================
+# FETCH DATA
 # =========================================================
 def fetch(q, api_key, country):
 
@@ -117,7 +127,7 @@ def fetch(q, api_key, country):
     return pd.DataFrame(items)
 
 # =========================================================
-# GPT COPILOT
+# AI FUNCTION
 # =========================================================
 def ask_dealgenie(question, context=""):
 
@@ -138,7 +148,7 @@ def ask_dealgenie(question, context=""):
         return f"⚠️ Error: {str(e)}"
 
 # =========================================================
-# MAIN PRODUCT FLOW
+# PRODUCT FLOW
 # =========================================================
 df = pd.DataFrame()
 
@@ -187,16 +197,13 @@ if search_btn:
                     st.button("No Link", disabled=True)
 
 # =========================================================
-# 💬 ASK DEALGENIE (LATEST ONLY - NO HISTORY)
+# 💬 ASK DEALGENIE (VISIBLE OUTPUT FIXED)
 # =========================================================
 st.sidebar.markdown("---")
 st.sidebar.markdown("## 💬 Ask DealGenie")
 
 user_q = st.sidebar.text_input("Ask anything", key="chat_input")
 ask_btn = st.sidebar.button("Ask Assistant")
-
-if "last_answer" not in st.session_state:
-    st.session_state.last_answer = ""
 
 if ask_btn and user_q.strip():
 
@@ -207,12 +214,11 @@ if ask_btn and user_q.strip():
 
     answer = ask_dealgenie(user_q, context)
 
-    # ONLY KEEP LATEST (NO HISTORY)
     st.session_state.last_answer = answer
 
 # =========================================================
-# SHOW ONLY LAST ANSWER
+# FORCE VISIBILITY (IMPORTANT FIX)
 # =========================================================
 if st.session_state.last_answer:
-    st.sidebar.markdown("### 🧠 Latest Answer")
-    st.sidebar.write(st.session_state.last_answer)
+    st.sidebar.markdown("### 🧠 Answer")
+    st.sidebar.success(st.session_state.last_answer)
