@@ -9,7 +9,7 @@ import re
 st.set_page_config(page_title="DealGenie", layout="wide")
 
 # =========================================================
-# STYLE (SAFE + CONTROLLED ONLY)
+# STYLE (PRODUCTION SAFE)
 # =========================================================
 st.markdown("""
 <style>
@@ -30,21 +30,27 @@ st.markdown("""
     margin-bottom: 20px;
 }
 
-/* SCROLL AREA */
-.scroll-container {
-    display: flex;
-    overflow-x: auto;
-    gap: 16px;
-    padding: 10px;
+/* SECTION TITLE */
+.section-title {
+    font-size: 18px;
+    font-weight: 700;
+    margin: 20px 0 10px 5px;
 }
 
-/* HIDE SCROLLBAR */
-.scroll-container::-webkit-scrollbar {
+/* HORIZONTAL SCROLL ROW */
+.row {
+    display: flex;
+    overflow-x: auto;
+    gap: 14px;
+    padding: 10px 5px;
+}
+
+.row::-webkit-scrollbar {
     display: none;
 }
 
-/* CARD FIXED SIZE */
-.product-card {
+/* PRODUCT CARD (AMAZON STYLE) */
+.card {
     min-width: 240px;
     max-width: 240px;
     background: #141414;
@@ -57,14 +63,14 @@ st.markdown("""
     height: 420px;
 }
 
-/* IMAGE FIX */
-.product-card img {
+/* IMAGE */
+.card img {
     width: 100%;
     height: 220px;
     object-fit: cover;
 }
 
-/* CONTENT AREA FIXED */
+/* BODY */
 .card-body {
     padding: 10px;
     display: flex;
@@ -73,7 +79,7 @@ st.markdown("""
     flex: 1;
 }
 
-/* TITLE FIX */
+/* TITLE */
 .title {
     font-size: 13px;
     font-weight: 600;
@@ -88,14 +94,24 @@ st.markdown("""
     margin-top: 5px;
 }
 
-/* BUY BUTTON */
+/* BADGES */
+.badge {
+    font-size: 11px;
+    padding: 2px 6px;
+    background: #ff2d2d;
+    border-radius: 4px;
+    display: inline-block;
+    margin-top: 5px;
+}
+
+/* BUTTON */
 .buy {
     display: block;
     margin-top: 10px;
     background: #ff2d2d;
     color: white;
     text-align: center;
-    padding: 6px;
+    padding: 7px;
     border-radius: 6px;
     text-decoration: none;
     font-weight: 700;
@@ -114,7 +130,7 @@ st.markdown("""
 st.markdown("""
 <div class="hero">
 <h1>🛍 DealGenie AI Shopping</h1>
-<h3>Smart deals. Real savings. Netflix-style browsing.</h3>
+<h3>Amazon + Netflix style smart shopping experience</h3>
 </div>
 """, unsafe_allow_html=True)
 
@@ -125,12 +141,10 @@ st.sidebar.markdown("## ☰ Menu")
 
 api_key = st.sidebar.text_input("SerpAPI Key", type="password")
 country = st.sidebar.selectbox("Country", ["India", "US"])
-max_products = st.sidebar.slider("Show Results", 6, 30, 12)
-
 query = st.text_input("🔎 Search Product")
 
 # =========================================================
-# FETCH DATA (UNCHANGED LOGIC)
+# FETCH
 # =========================================================
 def fetch(q, api_key, country):
 
@@ -166,11 +180,8 @@ def fetch(q, api_key, country):
     return pd.DataFrame(items)
 
 # =========================================================
-# FILTER
+# LOGIC
 # =========================================================
-def is_relevant(title, q):
-    return q.lower().split()[0] in str(title).lower()
-
 def score(row):
     return 1 / (row["PriceNum"] + 1)
 
@@ -189,38 +200,50 @@ if st.button("🔎 Search Product"):
         st.warning("No products found")
         st.stop()
 
-    df = df[df["Product"].apply(lambda x: is_relevant(x, query))]
     df["Score"] = df.apply(score, axis=1)
-    df = df.sort_values("Score", ascending=False).head(max_products)
+    df = df.sort_values("Score", ascending=False)
 
     st.markdown("## 🔥 Top Deals")
 
     # =====================================================
-    # NETFLIX STYLE STREAMLIT SCROLL ROW
+    # NETFLIX STYLE MULTI ROWS (PRODUCTION DESIGN)
     # =====================================================
-    st.markdown('<div class="scroll-container">', unsafe_allow_html=True)
 
-    for _, r in df.iterrows():
+    rows = [df.iloc[i:i+6] for i in range(0, len(df), 6)]
 
-        img = r["Image"] if r["Image"] else "https://via.placeholder.com/300"
+    for idx, row in enumerate(rows):
 
-        st.markdown(f"""
-        <div class="product-card">
-            <img src="{img}">
-            <div class="card-body">
-                <div>
-                    <div class="title">{str(r['Product'])[:60]}</div>
-                    <div class="price">{r['Price']}</div>
-                    <div style="font-size:12px; color:#aaa;">
-                        ⭐ {r['Rating'] if r.get('Rating') else '-'} / 5
+        st.markdown(f"<div class='section-title'>🔥 Trending Row {idx+1}</div>", unsafe_allow_html=True)
+
+        st.markdown('<div class="row">', unsafe_allow_html=True)
+
+        for _, r in row.iterrows():
+
+            img = r["Image"] if r["Image"] else "https://via.placeholder.com/300"
+
+            st.markdown(f"""
+            <div class="card">
+                <img src="{img}">
+                <div class="card-body">
+
+                    <div>
+                        <div class="title">{str(r['Product'])[:60]}</div>
+
+                        <div class="price">{r['Price']}</div>
+
+                        <div style="font-size:12px;color:#aaa;">
+                            ⭐ {r['Rating'] if r.get('Rating') else '-'} / 5
+                        </div>
+
+                        <div class="badge">Best Deal</div>
                     </div>
+
+                    <a class="buy" href="{r['Link']}" target="_blank">
+                        🛒 Buy Now
+                    </a>
+
                 </div>
-
-                <a class="buy" href="{r['Link']}" target="_blank">
-                    🛒 Buy Now
-                </a>
             </div>
-        </div>
-        """, unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
 
-    st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
