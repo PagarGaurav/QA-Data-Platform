@@ -9,17 +9,18 @@ import re
 st.set_page_config(page_title="DealGenie", layout="wide")
 
 # =========================================================
-# SAFE STYLE (NO LAYOUT BREAKING)
+# GLOBAL SAFE STYLE FIX
 # =========================================================
 st.markdown("""
 <style>
 
+/* MAIN BACKGROUND */
 .stApp {
     background: #0b0b0b;
     color: white;
 }
 
-/* HERO ONLY */
+/* HERO */
 .hero {
     background: linear-gradient(90deg, rgba(0,0,0,0.85), rgba(0,0,0,0.4)),
     url('https://images.unsplash.com/photo-1607082350899-7e105aa886ae');
@@ -29,30 +30,97 @@ st.markdown("""
     margin-bottom: 20px;
 }
 
-/* SIDEBAR SAFE */
+/* SIDEBAR FIX */
 section[data-testid="stSidebar"] {
     background-color: #111 !important;
 }
 
-section[data-testid="stSidebar"] * {
+/* Sidebar text visible */
+section[data-testid="stSidebar"] label,
+section[data-testid="stSidebar"] span,
+section[data-testid="stSidebar"] p {
     color: white !important;
+    opacity: 1 !important;
 }
 
-/* IMAGE FIX ONLY */
-img {
+/* Sidebar input text */
+section[data-testid="stSidebar"] input {
+    color: black !important;
+}
+
+/* SEARCH BUTTON FIX */
+.stButton > button {
+    background-color: #ff2d2d !important;
+    color: white !important;
+    font-weight: 700 !important;
+    border-radius: 8px !important;
+    border: none !important;
+    padding: 10px 16px !important;
+}
+
+.stButton > button:hover {
+    background-color: #ff0000 !important;
+}
+
+/* CARD STYLE */
+.card {
+    background: #141414;
+    border-radius: 12px;
+    padding: 10px;
+    height: 430px;
+    border: 1px solid #222;
+}
+
+/* IMAGE FIX */
+.card img {
+    height: 220px;
+    width: 100%;
+    object-fit: cover;
     border-radius: 10px;
+}
+
+/* TITLE FIX */
+.title {
+    font-size: 13px;
+    font-weight: 600;
+    height: 42px;
+    overflow: hidden;
+}
+
+/* RATING FIX */
+.rating {
+    height: 18px;
+    font-size: 12px;
+    color: #aaa;
+}
+
+/* BUY BUTTON (RED FIXED) */
+.buy-btn {
+    display: block;
+    margin-top: 10px;
+    background: #ff2d2d;
+    color: white;
+    text-align: center;
+    padding: 8px;
+    border-radius: 8px;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.buy-btn:hover {
+    background: #ff0000;
 }
 
 </style>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# HERO (branding fixed cleanly)
+# HERO
 # =========================================================
 st.markdown("""
 <div class="hero">
 <h1>🛍 DealGenie</h1>
-<h3>AI Shopping Assistant – Find Best Deals Instantly</h3>
+<h3>AI Shopping Assistant — Find Best Deals Instantly</h3>
 </div>
 """, unsafe_allow_html=True)
 
@@ -64,9 +132,7 @@ st.sidebar.markdown("## Filters")
 api_key = st.sidebar.text_input("SerpAPI Key", type="password")
 country = st.sidebar.selectbox("Country", ["India", "US"])
 max_products = st.sidebar.slider("Products", 4, 24, 12)
-min_rating = st.sidebar.slider("Min Rating", 0.0, 5.0, 0.0)
-
-query = st.text_input("Search Product")
+query = st.text_input("🔎 Search Product")
 
 # =========================================================
 # FETCH DATA
@@ -118,14 +184,12 @@ if st.button("Search"):
         st.warning("No results found")
         st.stop()
 
-    df["Rating"] = pd.to_numeric(df["Rating"], errors="coerce").fillna(0)
-    df = df[df["Rating"] >= min_rating]
     df = df.sort_values("PriceNum").head(max_products)
 
-    st.markdown("## Top Deals")
+    st.markdown("## 🔥 Top Deals")
 
     # =====================================================
-    # FIXED GRID (100% STABLE STREAMLIT WAY)
+    # STABLE GRID
     # =====================================================
     for i in range(0, len(df), 4):
 
@@ -136,29 +200,32 @@ if st.button("Search"):
 
             with col:
 
-                # FIXED HEIGHT CONTAINER EFFECT
-                with st.container():
+                st.markdown('<div class="card">', unsafe_allow_html=True)
 
-                    st.image(
-                        r["Image"] if r["Image"] else "https://via.placeholder.com/300",
-                        use_container_width=True
-                    )
+                st.image(
+                    r["Image"] if r["Image"] else "https://via.placeholder.com/300",
+                    use_container_width=True
+                )
 
-                    # TITLE FIXED SPACE
-                    st.markdown(
-                        f"**{str(r['Product'])[:55]}**"
-                    )
+                st.markdown(f"<div class='title'>{str(r['Product'])[:55]}</div>",
+                            unsafe_allow_html=True)
 
-                    st.write(f"💰 {r['Price']}")
+                st.write(f"💰 {r['Price']}")
 
-                    # FIXED RATING SPACE (NO SHIFT)
-                    if r["Rating"] > 0:
-                        st.write(f"⭐ {r['Rating']} / 5")
-                    else:
-                        st.write("⭐ —")
+                rating = r["Rating"] if r.get("Rating") else ""
+                st.markdown(
+                    f"<div class='rating'>{'⭐ ' + str(rating) + ' / 5' if rating else '&nbsp;'}</div>",
+                    unsafe_allow_html=True
+                )
 
-                    # BUTTON SAFE
-                    if r["Link"]:
-                        st.link_button("Buy Now 🛒", r["Link"])
-                    else:
-                        st.button("No Link", disabled=True)
+                # RED BUY BUTTON (FIXED)
+                if r["Link"]:
+                    st.markdown(f"""
+                    <a class="buy-btn" href="{r['Link']}" target="_blank">
+                        🛒 Buy Now
+                    </a>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.button("No Link", disabled=True)
+
+                st.markdown('</div>', unsafe_allow_html=True)
