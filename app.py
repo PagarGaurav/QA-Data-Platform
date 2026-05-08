@@ -9,7 +9,7 @@ import re
 st.set_page_config(page_title="DealGenie AI Shopping", layout="wide")
 
 # =========================================================
-# CLEAN DARK AI SHOPPING THEME (NO NETFLIX WORDS)
+# DARK AI SHOPPING THEME
 # =========================================================
 st.markdown("""
 <style>
@@ -71,12 +71,12 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =========================================================
-# HERO (NO NETFLIX WORD)
+# HERO
 # =========================================================
 st.markdown("""
 <div class="hero">
 <h1>🛍 AI Shopping Assistant</h1>
-<h3>Smart recommendations. Real savings.</h3>
+<h3>Smart recommendations. Real savings. Better decisions.</h3>
 </div>
 """, unsafe_allow_html=True)
 
@@ -85,7 +85,7 @@ st.markdown("""
 # =========================================================
 api_key = st.sidebar.text_input("SerpAPI Key", type="password")
 country = st.sidebar.selectbox("Country", ["India", "US"])
-max_products = st.sidebar.slider("Max Products", 5, 40, 15)
+max_products = st.sidebar.slider("How many deals you want?", 5, 40, 10)
 
 query = st.text_input("Search Product")
 
@@ -107,7 +107,27 @@ def reviews_num(x):
     return int(nums) if nums else 0
 
 def ai_score(row):
-    return (row["rating_num"]*50) + (row["reviews_num"]/100) - (row["price_num"]/1000)
+    return (row["rating_num"] * 50) + (row["reviews_num"] / 100) - (row["price_num"] / 1000)
+
+# =========================================================
+# WHY BUY INSIGHT ENGINE
+# =========================================================
+def why_buy(row):
+    reasons = []
+
+    if row["rating_num"] >= 4:
+        reasons.append("Highly rated by buyers")
+    if row["reviews_num"] > 500:
+        reasons.append("Trusted by many users")
+    if row["price_num"] < 2000:
+        reasons.append("Budget-friendly price")
+    if "amazon" in str(row["Platform"]).lower():
+        reasons.append("Reliable marketplace")
+
+    if not reasons:
+        reasons.append("Balanced choice across price and rating")
+
+    return " • " + " | ".join(reasons)
 
 # =========================================================
 # FETCH DATA
@@ -130,7 +150,6 @@ def fetch(q):
     items = []
 
     for x in results:
-
         items.append({
             "Product": x.get("title"),
             "Price": x.get("price"),
@@ -147,7 +166,7 @@ def fetch(q):
     return pd.DataFrame(items)
 
 # =========================================================
-# ROW RENDER (SAFE - NO HTML BREAK)
+# ROW RENDER
 # =========================================================
 def row(title, df):
 
@@ -166,12 +185,14 @@ def row(title, df):
             st.write(f"💰 {r['Price']}")
             st.write(f"⭐ {r['Rating']}")
 
+            st.caption(why_buy(r))   # 👈 NEW INSIGHT
+
             st.link_button("🛒 Buy Now", r["Link"])
 
 # =========================================================
 # MAIN
 # =========================================================
-if st.button("🚀 Start AI Shopping"):
+if st.button("🚀 Discover Smart Deals"):
 
     if not api_key or not query:
         st.warning("Enter API key and product")
@@ -179,15 +200,17 @@ if st.button("🚀 Start AI Shopping"):
 
     df = fetch(query)
 
-    # AI SCORE
     df["ai_score"] = df.apply(ai_score, axis=1)
 
+    # APPLY FILTER STRICTLY
+    df = df.head(max_products)
+
     # =========================
-    # FEATURED
+    # FEATURED DEAL
     # =========================
     featured = df.iloc[0]
 
-    st.markdown("## 🔥 Best Deal")
+    st.markdown("## 🔥 Best Deal Today")
 
     st.image(featured["Image"], width=300)
 
@@ -195,28 +218,24 @@ if st.button("🚀 Start AI Shopping"):
     st.write(f"💰 {featured['Price']}")
     st.write(f"⭐ {featured['Rating']}")
 
+    st.caption("💡 Why this deal: " + why_buy(featured))
+
     st.link_button("🛒 Buy Now", featured["Link"])
 
     # =========================
-    # AI RECOMMENDED (FIXED)
+    # AI RECOMMENDED
     # =========================
-    row("🧠 AI Recommended For You",
+    row("🧠 AI Recommended Picks",
         df.sort_values("ai_score", ascending=False).head(8))
 
     # =========================
     # OTHER ROWS
     # =========================
-    row("💸 Budget Deals",
+    row("💸 Budget Friendly Deals",
         df.sort_values("price_num").head(8))
 
-    row("⭐ Top Rated",
+    row("⭐ Top Rated Products",
         df.sort_values("rating_num", ascending=False).head(8))
 
-    row("🔥 Trending",
+    row("🔥 Most Popular",
         df.sort_values("reviews_num", ascending=False).head(8))
-
-# =========================================================
-# FOOTER
-# =========================================================
-st.markdown("---")
-st.caption("AI Shopping Assistant • Clean Production Version")
