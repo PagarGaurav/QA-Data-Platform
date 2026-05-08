@@ -9,7 +9,7 @@ import re
 st.set_page_config(page_title="DealGenie", layout="wide")
 
 # =========================================================
-# SAFE BLACK THEME (PRESERVED)
+# BLACK THEME (PRESERVED)
 # =========================================================
 st.markdown("""
 <style>
@@ -20,16 +20,43 @@ st.markdown("""
     color: white;
 }
 
-/* SIDEBAR FIX (TEXT + LABEL VISIBILITY) */
+/* SIDEBAR BACKGROUND */
 section[data-testid="stSidebar"] {
     background-color: #111 !important;
 }
 
-section[data-testid="stSidebar"] * {
+/* =========================================================
+   FIX: SIDEBAR VISIBILITY ISSUE (NEW ADDITION ONLY)
+   ========================================================= */
+
+/* Labels (API Key, Country etc.) */
+section[data-testid="stSidebar"] label {
+    color: white !important;
+    font-weight: 600 !important;
+}
+
+/* Sidebar headers/text */
+section[data-testid="stSidebar"] h1,
+section[data-testid="stSidebar"] h2,
+section[data-testid="stSidebar"] h3,
+section[data-testid="stSidebar"] p {
     color: white !important;
 }
 
-/* SEARCH BUTTON FIX */
+/* Input text */
+section[data-testid="stSidebar"] input {
+    color: black !important;
+    background-color: white !important;
+}
+
+/* Selectbox text */
+section[data-testid="stSidebar"] div {
+    color: white !important;
+}
+
+/* =========================================================
+   SEARCH BUTTON FIX
+   ========================================================= */
 .stButton > button {
     background-color: #ff2d2d !important;
     color: white !important;
@@ -43,7 +70,7 @@ section[data-testid="stSidebar"] * {
     background-color: #ff0000 !important;
 }
 
-/* IMAGE FIX */
+/* IMAGE */
 img {
     border-radius: 10px;
 }
@@ -60,7 +87,7 @@ st.markdown("""
 """)
 
 # =========================================================
-# SIDEBAR (FIXED VISIBILITY)
+# SIDEBAR
 # =========================================================
 st.sidebar.markdown("## Filters")
 
@@ -136,7 +163,7 @@ if search_btn:
     st.markdown("## 🔥 Top Deals")
 
     # =====================================================
-    # FIXED GRID (NO HTML → NO BLACK BOX ISSUE)
+    # STABLE GRID (UNCHANGED LOGIC)
     # =====================================================
     for i in range(0, len(df), 4):
 
