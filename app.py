@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 import re
+from urllib.parse import urlparse
 from openai import OpenAI
 
 # =========================================================
@@ -39,7 +40,7 @@ st.markdown("""
     border-radius:14px;
     padding:12px;
     border:1px solid #222;
-    height:520px;
+    height:590px;
 }
 
 /* IMAGES */
@@ -66,47 +67,56 @@ img {
     font-weight:700 !important;
 }
 
-/* =======================================================
-SIDEBAR BLACK THEME
-======================================================= */
-
+/* SIDEBAR */
 section[data-testid="stSidebar"]{
     background:#000 !important;
 }
 
-/* ALL SIDEBAR TEXT */
 section[data-testid="stSidebar"] *{
     color:white !important;
 }
 
-/* INPUT BOX */
 section[data-testid="stSidebar"] input{
     background-color:#000 !important;
     color:white !important;
     border:1px solid #333 !important;
 }
 
-/* PASSWORD ICON BUTTON */
 section[data-testid="stSidebar"] button{
     background-color:#000 !important;
     border:none !important;
 }
 
-/* EYE ICON */
 section[data-testid="stSidebar"] button svg{
     stroke:white !important;
     fill:white !important;
 }
 
-/* SELECT BOX */
 section[data-testid="stSidebar"] div[data-baseweb="select"] > div{
     background:#000 !important;
     color:white !important;
 }
 
-/* SLIDER */
 section[data-testid="stSidebar"] .stSlider{
     color:white !important;
+}
+
+/* AI BADGES */
+.badge {
+    background:#1c1c1c;
+    border:1px solid #333;
+    padding:6px 10px;
+    border-radius:8px;
+    margin-top:8px;
+    font-size:13px;
+    font-weight:700;
+    color:#00ff95;
+}
+
+.portal {
+    color:#ffcc00;
+    font-size:13px;
+    margin-top:4px;
 }
 
 </style>
@@ -142,9 +152,6 @@ country = st.sidebar.selectbox(
     ["India", "US"]
 )
 
-# =========================================================
-# UPDATED LIMITS
-# =========================================================
 max_products = st.sidebar.slider(
     "Show Results",
     1,
@@ -168,6 +175,33 @@ query = st.text_input("🔎 Search Product")
 # OPENAI CLIENT
 # =========================================================
 client = OpenAI(api_key=openai_key) if openai_key else None
+
+# =========================================================
+# GET PORTAL NAME
+# =========================================================
+def get_store_name(link):
+
+    if not link:
+        return "Unknown"
+
+    domain = urlparse(link).netloc.lower()
+
+    if "amazon" in domain:
+        return "Amazon"
+
+    elif "flipkart" in domain:
+        return "Flipkart"
+
+    elif "myntra" in domain:
+        return "Myntra"
+
+    elif "ajio" in domain:
+        return "Ajio"
+
+    elif "meesho" in domain:
+        return "Meesho"
+
+    return domain.replace("www.", "")
 
 # =========================================================
 # FETCH PRODUCTS
@@ -201,13 +235,24 @@ def fetch(q, api_key, country):
             re.sub(r"[^\d]", "", str(price_text)) or 0
         )
 
+        rating = x.get("rating")
+
+        try:
+            rating_num = float(rating)
+        except:
+            rating_num = 0
+
+        link = x.get("product_link") or x.get("link") or ""
+
         items.append({
             "Product": x.get("title"),
             "Price": price_text,
             "PriceNum": price_num,
-            "Link": x.get("product_link") or x.get("link") or "",
+            "Link": link,
+            "Store": get_store_name(link),
             "Image": x.get("thumbnail"),
-            "Rating": x.get("rating") or "N/A"
+            "Rating": rating if rating else "N/A",
+            "RatingNum": rating_num
         })
 
     return pd.DataFrame(items)
@@ -278,7 +323,7 @@ if st.button("🔎 Search Product"):
         st.warning("No products found")
         st.stop()
 
-    # FILTER PRICE
+    # FILTER
     df = df[
         (df["PriceNum"] >= price_range[0]) &
         (df["PriceNum"] <= price_range[1])
@@ -286,6 +331,15 @@ if st.button("🔎 Search Product"):
 
     # LIMIT
     df = df.head(max_products)
+
+    # =====================================================
+    # AI BEST PRODUCT LOGIC
+    # =====================================================
+    best_value_index = (
+        (df["RatingNum"] * 1000) - df["PriceNum"]
+    ).idxmax()
+
+    cheapest_index = df["PriceNum"].idxmin()
 
     # SAVE SESSION
     st.session_state["products_df"] = df
@@ -306,7 +360,7 @@ if st.button("🔎 Search Product"):
 
         row = df.iloc[i:i+3]
 
-        for col, (_, r) in zip(cols, row.iterrows()):
+        for col, (idx, r) in zip(cols, row.iterrows()):
 
             with col:
 
@@ -331,7 +385,28 @@ if st.button("🔎 Search Product"):
                 )
 
                 st.write(f"💰 {r['Price']}")
+
                 st.write(f"⭐ {r['Rating']}")
+
+                # STORE NAME
+                st.markdown(
+                    f"<div class='portal'>🛒 Store: {r['Store']}</div>",
+                    unsafe_allow_html=True
+                )
+
+                # CHEAPEST TAG
+                if idx == cheapest_index:
+                    st.markdown(
+                        "<div class='badge'>💰 Cheapest Deal</div>",
+                        unsafe_allow_html=True
+                    )
+
+                # BEST VALUE TAG
+                if idx == best_value_index:
+                    st.markdown(
+                        "<div class='badge'>🏆 Best Rated Value</div>",
+                        unsafe_allow_html=True
+                    )
 
                 if r["Link"]:
 
@@ -378,7 +453,7 @@ if st.sidebar.button("Ask Assistant"):
     if not df_context.empty:
 
         context = df_context[
-            ["Product", "Price", "Rating", "Link"]
+            ["Product", "Price", "Rating", "Store"]
         ].to_string(index=False)
 
     answer = ask_dealgenie(
