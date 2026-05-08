@@ -40,11 +40,12 @@ st.markdown("""
     border-radius:14px;
     padding:12px;
     border:1px solid #222;
-    height:590px;
+    min-height:560px;
+    margin-bottom:20px;
 }
 
-/* IMAGES */
-img {
+/* IMAGE */
+.card img {
     border-radius:10px;
 }
 
@@ -97,16 +98,12 @@ section[data-testid="stSidebar"] div[data-baseweb="select"] > div{
     color:white !important;
 }
 
-section[data-testid="stSidebar"] .stSlider{
-    color:white !important;
-}
-
-/* AI BADGES */
+/* BADGES */
 .badge {
-    background:#1c1c1c;
+    background:#1b1b1b;
     border:1px solid #333;
-    padding:6px 10px;
     border-radius:8px;
+    padding:6px 10px;
     margin-top:8px;
     font-size:13px;
     font-weight:700;
@@ -117,6 +114,8 @@ section[data-testid="stSidebar"] .stSlider{
     color:#ffcc00;
     font-size:13px;
     margin-top:4px;
+    margin-bottom:6px;
+    font-weight:700;
 }
 
 </style>
@@ -172,36 +171,46 @@ price_range = st.sidebar.slider(
 query = st.text_input("🔎 Search Product")
 
 # =========================================================
-# OPENAI CLIENT
+# OPENAI
 # =========================================================
 client = OpenAI(api_key=openai_key) if openai_key else None
 
 # =========================================================
-# GET PORTAL NAME
+# STORE NAME FIX
 # =========================================================
-def get_store_name(link):
+def get_store_name(source, link):
 
-    if not link:
-        return "Unknown"
+    # PRIMARY STORE NAME
+    if source:
+        return source
 
-    domain = urlparse(link).netloc.lower()
+    # FALLBACK FROM URL
+    if link:
 
-    if "amazon" in domain:
-        return "Amazon"
+        domain = urlparse(link).netloc.lower()
 
-    elif "flipkart" in domain:
-        return "Flipkart"
+        if "amazon" in domain:
+            return "Amazon"
 
-    elif "myntra" in domain:
-        return "Myntra"
+        if "flipkart" in domain:
+            return "Flipkart"
 
-    elif "ajio" in domain:
-        return "Ajio"
+        if "myntra" in domain:
+            return "Myntra"
 
-    elif "meesho" in domain:
-        return "Meesho"
+        if "ajio" in domain:
+            return "Ajio"
 
-    return domain.replace("www.", "")
+        if "meesho" in domain:
+            return "Meesho"
+
+        if "croma" in domain:
+            return "Croma"
+
+        if "nykaa" in domain:
+            return "Nykaa"
+
+    return "Google Store"
 
 # =========================================================
 # FETCH PRODUCTS
@@ -244,12 +253,19 @@ def fetch(q, api_key, country):
 
         link = x.get("product_link") or x.get("link") or ""
 
+        source = (
+            x.get("source") or
+            x.get("seller") or
+            x.get("merchant") or
+            ""
+        )
+
         items.append({
             "Product": x.get("title"),
             "Price": price_text,
             "PriceNum": price_num,
             "Link": link,
-            "Store": get_store_name(link),
+            "Store": get_store_name(source, link),
             "Image": x.get("thumbnail"),
             "Rating": rating if rating else "N/A",
             "RatingNum": rating_num
@@ -258,7 +274,7 @@ def fetch(q, api_key, country):
     return pd.DataFrame(items)
 
 # =========================================================
-# AI SHOPPING COPILOT
+# AI ASSISTANT
 # =========================================================
 def ask_dealgenie(question, context=""):
 
@@ -275,13 +291,13 @@ def ask_dealgenie(question, context=""):
                     "content":"""
 You are DealGenie AI Shopping Assistant.
 
-Your role:
-- Recommend BEST product
-- Find CHEAPEST option
-- Tell WHERE TO BUY
-- Explain WHY shortly
+Recommend:
+- Best product
+- Cheapest product
+- Best rated product
+- Best store
 
-Keep answers concise and useful.
+Keep answers short.
 """
                 },
                 {
@@ -292,12 +308,6 @@ Question:
 
 Products:
 {context}
-
-Return:
-1. Best Product
-2. Cheapest Deal
-3. Where To Buy
-4. Reason
 """
                 }
             ]
@@ -309,7 +319,7 @@ Return:
         return f"⚠️ Error: {str(e)}"
 
 # =========================================================
-# SEARCH BUTTON
+# SEARCH
 # =========================================================
 if st.button("🔎 Search Product"):
 
@@ -323,7 +333,7 @@ if st.button("🔎 Search Product"):
         st.warning("No products found")
         st.stop()
 
-    # FILTER
+    # PRICE FILTER
     df = df[
         (df["PriceNum"] >= price_range[0]) &
         (df["PriceNum"] <= price_range[1])
@@ -332,27 +342,27 @@ if st.button("🔎 Search Product"):
     # LIMIT
     df = df.head(max_products)
 
-    # =====================================================
-    # AI BEST PRODUCT LOGIC
-    # =====================================================
-    best_value_index = (
-        (df["RatingNum"] * 1000) - df["PriceNum"]
-    ).idxmax()
+    # RESET INDEX
+    df = df.reset_index(drop=True)
 
+    # =====================================================
+    # FIXED LOGIC
+    # =====================================================
+
+    # CHEAPEST PRODUCT
     cheapest_index = df["PriceNum"].idxmin()
 
-    # SAVE SESSION
-    st.session_state["products_df"] = df
+    # BEST RATED PRODUCT
+    best_rated_index = df["RatingNum"].idxmax()
 
-    # CLEAR OLD AI OUTPUT
+    # SESSION
+    st.session_state["products_df"] = df
     st.session_state["last_answer"] = ""
 
     st.markdown("## 🔥 Best Deals")
 
-    df = df.reset_index(drop=True)
-
     # =====================================================
-    # PRODUCT GRID
+    # GRID
     # =====================================================
     for i in range(0, len(df), 3):
 
@@ -365,7 +375,7 @@ if st.button("🔎 Search Product"):
             with col:
 
                 st.markdown(
-                    '<div class="card">',
+                    "<div class='card'>",
                     unsafe_allow_html=True
                 )
 
@@ -381,7 +391,7 @@ if st.button("🔎 Search Product"):
                 )
 
                 st.markdown(
-                    f"**{str(r['Product'])[:60]}**"
+                    f"**{str(r['Product'])[:65]}**"
                 )
 
                 st.write(f"💰 {r['Price']}")
@@ -390,24 +400,25 @@ if st.button("🔎 Search Product"):
 
                 # STORE NAME
                 st.markdown(
-                    f"<div class='portal'>🛒 Store: {r['Store']}</div>",
+                    f"<div class='portal'>🛒 {r['Store']}</div>",
                     unsafe_allow_html=True
                 )
 
-                # CHEAPEST TAG
+                # CHEAPEST
                 if idx == cheapest_index:
                     st.markdown(
                         "<div class='badge'>💰 Cheapest Deal</div>",
                         unsafe_allow_html=True
                     )
 
-                # BEST VALUE TAG
-                if idx == best_value_index:
+                # BEST RATED
+                if idx == best_rated_index:
                     st.markdown(
-                        "<div class='badge'>🏆 Best Rated Value</div>",
+                        "<div class='badge'>🏆 Best Rated</div>",
                         unsafe_allow_html=True
                     )
 
+                # BUY BUTTON
                 if r["Link"]:
 
                     st.link_button(
@@ -415,15 +426,8 @@ if st.button("🔎 Search Product"):
                         r["Link"]
                     )
 
-                else:
-
-                    st.button(
-                        "No Link Available",
-                        disabled=True
-                    )
-
                 st.markdown(
-                    '</div>',
+                    "</div>",
                     unsafe_allow_html=True
                 )
 
@@ -439,7 +443,7 @@ user_q = st.sidebar.text_input(
 )
 
 # =========================================================
-# AI ASK BUTTON
+# ASK BUTTON
 # =========================================================
 if st.sidebar.button("Ask Assistant"):
 
