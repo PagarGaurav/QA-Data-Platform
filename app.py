@@ -9,15 +9,15 @@ import re
 st.set_page_config(page_title="DealGenie", layout="wide")
 
 # =========================================================
-# GLOBAL STYLE (SAFE ONLY)
+# SAFE GLOBAL STYLE (NO SIDEBAR BREAKING)
 # =========================================================
 st.markdown("""
 <style>
 
-.stApp {
+/* MAIN BACKGROUND ONLY */
+.main {
     background: #0b0b0b;
     color: white;
-    font-family: Arial;
 }
 
 /* HERO */
@@ -25,18 +25,64 @@ st.markdown("""
     background: linear-gradient(90deg, rgba(0,0,0,0.9), rgba(0,0,0,0.3)),
     url('https://images.unsplash.com/photo-1607082350899-7e105aa886ae');
     background-size: cover;
-    padding: 60px;
+    padding: 55px;
     border-radius: 20px;
     margin-bottom: 20px;
 }
 
-/* CARD LOOK ONLY (NO HTML) */
-.block-card {
+/* SIDEBAR FIX */
+section[data-testid="stSidebar"] {
+    background-color: #111 !important;
+}
+
+section[data-testid="stSidebar"] * {
+    color: white !important;
+}
+
+/* PRODUCT CARD */
+.card {
     background: #141414;
     border-radius: 12px;
     padding: 10px;
-    height: 420px;
+    height: 430px;
     border: 1px solid #222;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+/* IMAGE FIXED SIZE */
+.card img {
+    height: 220px;
+    width: 100%;
+    object-fit: cover;
+    border-radius: 10px;
+}
+
+/* TITLE FIXED HEIGHT */
+.title {
+    font-size: 13px;
+    font-weight: 600;
+    height: 42px;
+    overflow: hidden;
+}
+
+/* RATING SPACE RESERVED */
+.rating {
+    height: 18px;
+    font-size: 12px;
+    color: #aaa;
+}
+
+/* PRICE */
+.price {
+    color: #00ffae;
+    font-weight: 700;
+}
+
+/* BUY BUTTON */
+.buy {
+    margin-top: 10px;
 }
 
 </style>
@@ -48,15 +94,23 @@ st.markdown("""
 st.markdown("""
 <div class="hero">
 <h1>🛍 DealGenie AI Shopping</h1>
-<h3>Amazon + Netflix hybrid experience (stable UI)</h3>
+<h3>Stable Amazon + Netflix style product experience</h3>
 </div>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# SIDEBAR
+# SIDEBAR (WORKING FILTERS)
 # =========================================================
+st.sidebar.markdown("## ☰ Filters")
+
 api_key = st.sidebar.text_input("SerpAPI Key", type="password")
+
 country = st.sidebar.selectbox("Country", ["India", "US"])
+
+max_products = st.sidebar.slider("Products to Show", 4, 24, 12)
+
+min_rating = st.sidebar.slider("Min Rating", 0.0, 5.0, 0.0)
+
 query = st.text_input("🔎 Search Product")
 
 # =========================================================
@@ -89,13 +143,13 @@ def fetch(q, api_key, country):
             "PriceNum": price_num,
             "Link": x.get("product_link") or x.get("link") or "",
             "Image": x.get("thumbnail"),
-            "Rating": x.get("rating"),
+            "Rating": x.get("rating")
         })
 
     return pd.DataFrame(items)
 
 # =========================================================
-# MAIN
+# MAIN LOGIC
 # =========================================================
 if st.button("🔎 Search Product"):
 
@@ -109,41 +163,54 @@ if st.button("🔎 Search Product"):
         st.warning("No products found")
         st.stop()
 
-    df = df.sort_values("PriceNum", ascending=True)
+    # FILTERS
+    if "Rating" in df.columns:
+        df["Rating"] = pd.to_numeric(df["Rating"], errors="coerce").fillna(0)
+        df = df[df["Rating"] >= min_rating]
+
+    df = df.sort_values("PriceNum", ascending=True).head(max_products)
 
     st.markdown("## 🔥 Top Deals")
 
     # =====================================================
-    # NETFLIX STYLE SAFE STREAMLIT GRID
+    # STABLE GRID (NO HTML)
     # =====================================================
     for i in range(0, len(df), 4):
 
         cols = st.columns(4)
-
         chunk = df.iloc[i:i+4]
 
         for col, (_, r) in zip(cols, chunk.iterrows()):
 
             with col:
 
-                with st.container():
+                st.markdown('<div class="card">', unsafe_allow_html=True)
 
-                    st.markdown('<div class="block-card">', unsafe_allow_html=True)
+                # IMAGE (FIXED SIZE)
+                st.image(
+                    r["Image"] if r["Image"] else "https://via.placeholder.com/300",
+                    use_container_width=True
+                )
 
-                    st.image(r["Image"], use_container_width=True)
+                # TITLE
+                st.markdown(f"<div class='title'>{str(r['Product'])[:60]}</div>",
+                            unsafe_allow_html=True)
 
-                    st.markdown(f"**{str(r['Product'])[:55]}**")
+                # PRICE
+                st.markdown(f"<div class='price'>💰 {r['Price']}</div>",
+                            unsafe_allow_html=True)
 
-                    st.write(f"💰 {r['Price']}")
+                # RATING (FIXED SPACE)
+                rating = r["Rating"] if r.get("Rating") else ""
+                st.markdown(
+                    f"<div class='rating'>{'⭐ ' + str(rating) + ' / 5' if rating else '&nbsp;'}</div>",
+                    unsafe_allow_html=True
+                )
 
-                    if r.get("Rating"):
-                        st.write(f"⭐ {r['Rating']} / 5")
-                    else:
-                        st.write("⭐ Not rated")
+                # BUTTON (SAFE STREAMLIT)
+                if r["Link"]:
+                    st.link_button("🛒 Buy Now", r["Link"])
+                else:
+                    st.button("No Link", disabled=True)
 
-                    if r["Link"]:
-                        st.link_button("🛒 Buy Now", r["Link"])
-                    else:
-                        st.button("No Link", disabled=True)
-
-                    st.markdown('</div>', unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
