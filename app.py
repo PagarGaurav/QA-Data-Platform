@@ -9,7 +9,7 @@ import re
 st.set_page_config(page_title="DealGenie", layout="wide")
 
 # =========================================================
-# THEME + BRAND FIX
+# THEME (FIXED BACKGROUND + UNIFORM CARDS)
 # =========================================================
 st.markdown("""
 <style>
@@ -20,35 +20,35 @@ st.markdown("""
     font-family: Arial;
 }
 
-/* HERO BACKGROUND (PRODUCT RELEVANT) */
+/* HERO (SHOPPING + MONEY SAVING IMAGE) */
 .hero {
     background: linear-gradient(90deg, rgba(0,0,0,0.85), rgba(0,0,0,0.4)),
-    url('https://images.unsplash.com/photo-1607082349566-187342175e2f');
+    url('https://images.unsplash.com/photo-1607083206968-13611e3d76db');
     background-size:cover;
     padding:60px;
     border-radius:20px;
     margin-bottom:20px;
 }
 
-/* GRID CARDS UNIFORM SIZE */
+/* FIXED CARD SIZE */
 .card {
     background:#111;
     border-radius:14px;
     padding:12px;
     border:1px solid #222;
-    height:420px;
+    height:430px;
     display:flex;
     flex-direction:column;
     justify-content:space-between;
 }
 
-/* IMAGE FIX */
+/* IMAGE UNIFORM */
 .card img {
     height:180px;
     object-fit:contain;
 }
 
-/* BUY BUTTON RED */
+/* RED BUY BUTTON */
 .stLinkButton a {
     background-color:#ff2d2d !important;
     color:white !important;
@@ -57,6 +57,14 @@ st.markdown("""
     font-weight:700;
     text-decoration:none;
     display:inline-block;
+}
+
+/* FORCE BUTTON COLOR */
+.stButton > button {
+    background:#ff2d2d;
+    color:white;
+    font-weight:800;
+    border-radius:10px;
 }
 
 </style>
@@ -68,12 +76,12 @@ st.markdown("""
 st.markdown("""
 <div class="hero">
 <h1>🛍 DealGenie</h1>
-<h3>Smart deals. Real insights.</h3>
+<h3>Smart deals. Real savings. Best shopping prices.</h3>
 </div>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# MENU (SIDEBAR RENAMED)
+# MENU
 # =========================================================
 st.sidebar.markdown("## ☰ Menu")
 
@@ -120,7 +128,7 @@ def fetch(q, api_key, country):
     return pd.DataFrame(items)
 
 # =========================================================
-# SIMPLE FILTER
+# FILTER (LIGHT)
 # =========================================================
 def is_relevant(title, q):
     return q.lower().split()[0] in str(title).lower()
@@ -129,7 +137,7 @@ def score(row):
     return 1 / (row["PriceNum"] + 1)
 
 # =========================================================
-# SAFE BUY BUTTON (RED FIX)
+# SAFE BUY
 # =========================================================
 def safe_buy(url, key):
 
@@ -139,9 +147,9 @@ def safe_buy(url, key):
         st.link_button("🛒 Buy Now", url, key=f"buy_{key}")
 
 # =========================================================
-# MAIN
+# FIXED SEARCH BUTTON (RESTORED)
 # =========================================================
-if st.button("Search Product"):
+if st.button("🔎 Search Product"):
 
     if not api_key or not query:
         st.warning("Enter API key + product")
@@ -159,7 +167,7 @@ if st.button("Search Product"):
     df = df.sort_values("Score", ascending=False).head(max_products)
 
     # =====================================================
-    # GRID DISPLAY (UNIFORM SIZE FIX)
+    # UNIFORM GRID
     # =====================================================
     st.markdown("## 🔥 Deals")
 
@@ -172,6 +180,7 @@ if st.button("Search Product"):
             st.markdown('<div class="card">', unsafe_allow_html=True)
 
             st.image(r["Image"], use_container_width=True)
+
             st.markdown(f"**{r['Product'][:60]}**")
             st.write(r["Price"])
 
