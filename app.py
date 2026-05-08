@@ -10,7 +10,7 @@ from openai import OpenAI
 st.set_page_config(page_title="DealGenie", layout="wide")
 
 # =========================================================
-# STYLE (ONLY SIDEBAR BLACK + WHITE TEXT ADDED)
+# STYLE
 # =========================================================
 st.markdown("""
 <style>
@@ -57,36 +57,49 @@ img {
 
 /* SEARCH BUTTON */
 .stButton > button {
-    background:#ff2d2d;
-    color:white;
+    background:#ff2d2d !important;
+    color:white !important;
     font-weight:800;
     border-radius:10px;
+    border:none;
 }
 
 /* =======================================================
-SIDEBAR BLACK THEME
+SIDEBAR FIX
 ======================================================= */
 
 section[data-testid="stSidebar"] {
-    background-color:#000 !important;
+    background:#000 !important;
 }
 
+/* FIX ALL SIDEBAR TEXT */
 section[data-testid="stSidebar"] * {
     color:white !important;
 }
 
-/* INPUT TEXT */
+/* FIX INPUT TEXT */
 section[data-testid="stSidebar"] input {
+    background:#111 !important;
     color:white !important;
-    background:#111 !important;
 }
 
-/* SELECT BOX */
-section[data-testid="stSidebar"] div[data-baseweb="select"] {
+/* FIX SELECTBOX */
+section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
     background:#111 !important;
+    color:white !important;
 }
 
-/* SLIDER */
+/* FIX DROPDOWN TEXT */
+section[data-testid="stSidebar"] span {
+    color:white !important;
+}
+
+/* FIX PASSWORD EYE ICON */
+section[data-testid="stSidebar"] svg {
+    fill:white !important;
+}
+
+/* FIX SLIDER */
 section[data-testid="stSidebar"] .stSlider {
     color:white !important;
 }
@@ -109,10 +122,20 @@ st.markdown("""
 # =========================================================
 st.sidebar.markdown("## ☰ Menu")
 
-api_key = st.sidebar.text_input("SerpAPI Key", type="password")
-openai_key = st.sidebar.text_input("OpenAI API Key", type="password")
+api_key = st.sidebar.text_input(
+    "SerpAPI Key",
+    type="password"
+)
 
-country = st.sidebar.selectbox("Country", ["India", "US"])
+openai_key = st.sidebar.text_input(
+    "OpenAI API Key",
+    type="password"
+)
+
+country = st.sidebar.selectbox(
+    "Country",
+    ["India", "US"]
+)
 
 max_products = st.sidebar.slider(
     "Show Results",
@@ -272,7 +295,10 @@ if st.button("🔎 Search Product"):
 
             with col:
 
-                st.markdown('<div class="card">', unsafe_allow_html=True)
+                st.markdown(
+                    '<div class="card">',
+                    unsafe_allow_html=True
+                )
 
                 img = r["Image"] if r["Image"] else "https://via.placeholder.com/300"
 
@@ -286,15 +312,17 @@ if st.button("🔎 Search Product"):
                 )
 
                 st.write(f"💰 {r['Price']}")
-
                 st.write(f"⭐ {r['Rating']}")
 
                 if r["Link"]:
+
                     st.link_button(
                         "🛒 Buy Now",
                         r["Link"]
                     )
+
                 else:
+
                     st.button(
                         "No Link Available",
                         disabled=True
