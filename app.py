@@ -9,28 +9,27 @@ import re
 st.set_page_config(page_title="DealGenie", layout="wide")
 
 # =========================================================
-# SAFE GLOBAL STYLE (NO SIDEBAR BREAKING)
+# SAFE STYLE (NO LAYOUT BREAKING)
 # =========================================================
 st.markdown("""
 <style>
 
-/* MAIN BACKGROUND ONLY */
-.main {
+.stApp {
     background: #0b0b0b;
     color: white;
 }
 
-/* HERO */
+/* HERO ONLY */
 .hero {
-    background: linear-gradient(90deg, rgba(0,0,0,0.9), rgba(0,0,0,0.3)),
+    background: linear-gradient(90deg, rgba(0,0,0,0.85), rgba(0,0,0,0.4)),
     url('https://images.unsplash.com/photo-1607082350899-7e105aa886ae');
     background-size: cover;
-    padding: 55px;
+    padding: 50px;
     border-radius: 20px;
     margin-bottom: 20px;
 }
 
-/* SIDEBAR FIX */
+/* SIDEBAR SAFE */
 section[data-testid="stSidebar"] {
     background-color: #111 !important;
 }
@@ -39,79 +38,35 @@ section[data-testid="stSidebar"] * {
     color: white !important;
 }
 
-/* PRODUCT CARD */
-.card {
-    background: #141414;
-    border-radius: 12px;
-    padding: 10px;
-    height: 430px;
-    border: 1px solid #222;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-}
-
-/* IMAGE FIXED SIZE */
-.card img {
-    height: 220px;
-    width: 100%;
-    object-fit: cover;
+/* IMAGE FIX ONLY */
+img {
     border-radius: 10px;
-}
-
-/* TITLE FIXED HEIGHT */
-.title {
-    font-size: 13px;
-    font-weight: 600;
-    height: 42px;
-    overflow: hidden;
-}
-
-/* RATING SPACE RESERVED */
-.rating {
-    height: 18px;
-    font-size: 12px;
-    color: #aaa;
-}
-
-/* PRICE */
-.price {
-    color: #00ffae;
-    font-weight: 700;
-}
-
-/* BUY BUTTON */
-.buy {
-    margin-top: 10px;
 }
 
 </style>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# HERO
+# HERO (branding fixed cleanly)
 # =========================================================
 st.markdown("""
 <div class="hero">
-<h1>🛍 DealGenie AI Shopping</h1>
-<h3>Stable Amazon + Netflix style product experience</h3>
+<h1>🛍 DealGenie</h1>
+<h3>AI Shopping Assistant – Find Best Deals Instantly</h3>
 </div>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# SIDEBAR (WORKING FILTERS)
+# SIDEBAR
 # =========================================================
-st.sidebar.markdown("## ☰ Filters")
+st.sidebar.markdown("## Filters")
 
 api_key = st.sidebar.text_input("SerpAPI Key", type="password")
-
 country = st.sidebar.selectbox("Country", ["India", "US"])
-
-max_products = st.sidebar.slider("Products to Show", 4, 24, 12)
-
+max_products = st.sidebar.slider("Products", 4, 24, 12)
 min_rating = st.sidebar.slider("Min Rating", 0.0, 5.0, 0.0)
 
-query = st.text_input("🔎 Search Product")
+query = st.text_input("Search Product")
 
 # =========================================================
 # FETCH DATA
@@ -149,9 +104,9 @@ def fetch(q, api_key, country):
     return pd.DataFrame(items)
 
 # =========================================================
-# MAIN LOGIC
+# MAIN
 # =========================================================
-if st.button("🔎 Search Product"):
+if st.button("Search"):
 
     if not api_key or not query:
         st.warning("Enter API key + product")
@@ -160,20 +115,17 @@ if st.button("🔎 Search Product"):
     df = fetch(query, api_key, country)
 
     if df.empty:
-        st.warning("No products found")
+        st.warning("No results found")
         st.stop()
 
-    # FILTERS
-    if "Rating" in df.columns:
-        df["Rating"] = pd.to_numeric(df["Rating"], errors="coerce").fillna(0)
-        df = df[df["Rating"] >= min_rating]
+    df["Rating"] = pd.to_numeric(df["Rating"], errors="coerce").fillna(0)
+    df = df[df["Rating"] >= min_rating]
+    df = df.sort_values("PriceNum").head(max_products)
 
-    df = df.sort_values("PriceNum", ascending=True).head(max_products)
-
-    st.markdown("## 🔥 Top Deals")
+    st.markdown("## Top Deals")
 
     # =====================================================
-    # STABLE GRID (NO HTML)
+    # FIXED GRID (100% STABLE STREAMLIT WAY)
     # =====================================================
     for i in range(0, len(df), 4):
 
@@ -184,33 +136,29 @@ if st.button("🔎 Search Product"):
 
             with col:
 
-                st.markdown('<div class="card">', unsafe_allow_html=True)
+                # FIXED HEIGHT CONTAINER EFFECT
+                with st.container():
 
-                # IMAGE (FIXED SIZE)
-                st.image(
-                    r["Image"] if r["Image"] else "https://via.placeholder.com/300",
-                    use_container_width=True
-                )
+                    st.image(
+                        r["Image"] if r["Image"] else "https://via.placeholder.com/300",
+                        use_container_width=True
+                    )
 
-                # TITLE
-                st.markdown(f"<div class='title'>{str(r['Product'])[:60]}</div>",
-                            unsafe_allow_html=True)
+                    # TITLE FIXED SPACE
+                    st.markdown(
+                        f"**{str(r['Product'])[:55]}**"
+                    )
 
-                # PRICE
-                st.markdown(f"<div class='price'>💰 {r['Price']}</div>",
-                            unsafe_allow_html=True)
+                    st.write(f"💰 {r['Price']}")
 
-                # RATING (FIXED SPACE)
-                rating = r["Rating"] if r.get("Rating") else ""
-                st.markdown(
-                    f"<div class='rating'>{'⭐ ' + str(rating) + ' / 5' if rating else '&nbsp;'}</div>",
-                    unsafe_allow_html=True
-                )
+                    # FIXED RATING SPACE (NO SHIFT)
+                    if r["Rating"] > 0:
+                        st.write(f"⭐ {r['Rating']} / 5")
+                    else:
+                        st.write("⭐ —")
 
-                # BUTTON (SAFE STREAMLIT)
-                if r["Link"]:
-                    st.link_button("🛒 Buy Now", r["Link"])
-                else:
-                    st.button("No Link", disabled=True)
-
-                st.markdown('</div>', unsafe_allow_html=True)
+                    # BUTTON SAFE
+                    if r["Link"]:
+                        st.link_button("Buy Now 🛒", r["Link"])
+                    else:
+                        st.button("No Link", disabled=True)
