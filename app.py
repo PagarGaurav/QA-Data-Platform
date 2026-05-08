@@ -7,7 +7,7 @@ import streamlit.components.v1 as components
 # =========================================================
 # CONFIG
 # =========================================================
-st.set_page_config(page_title="DealGenie AI Shopping", layout="wide")
+st.set_page_config(page_title="DealGenie", layout="wide")
 
 # =========================================================
 # THEME
@@ -41,26 +41,29 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =========================================================
-# HERO
+# HERO (UPDATED BRANDING)
 # =========================================================
 st.markdown("""
 <div class="hero">
-<h1>🛍 DealGenie AI Shopping</h1>
-<h3>Smart deals. Real insights. Human-like assistant.</h3>
+<h1>🛍 DealGenie</h1>
+<h3>Smart deals. Real insights.</h3>
 </div>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# SESSION STATE
+# SESSION STATE (NO HISTORY)
 # =========================================================
-if "chat" not in st.session_state:
-    st.session_state.chat = []
-
 if "df" not in st.session_state:
     st.session_state.df = None
 
 if "memory" not in st.session_state:
     st.session_state.memory = {"disliked": set()}
+
+if "last_q" not in st.session_state:
+    st.session_state.last_q = ""
+
+if "last_a" not in st.session_state:
+    st.session_state.last_a = ""
 
 # =========================================================
 # INPUTS
@@ -72,12 +75,10 @@ max_products = st.sidebar.slider("Deals shown", 5, 40, 5)
 query = st.text_input("🔎 Search Products")
 
 # =========================================================
-# VOICE INPUT (REAL BROWSER SPEECH API)
+# 🎤 VOICE FIX (WORKING VERSION)
 # =========================================================
-st.markdown("### 🎤 Voice Search")
-
 voice_html = """
-<button onclick="startDictation()" style="
+<button onclick="startVoice()" style="
 background:#ff2d2d;
 color:white;
 padding:10px;
@@ -85,40 +86,36 @@ border:none;
 border-radius:8px;
 font-weight:700;
 cursor:pointer;
+width:100%;
 ">
 🎤 Speak
 </button>
 
 <script>
-function startDictation() {
-    if (window.hasOwnProperty('webkitSpeechRecognition')) {
-        var recognition = new webkitSpeechRecognition();
+function startVoice() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-        recognition.continuous = false;
-        recognition.interimResults = false;
-        recognition.lang = "en-US";
-
-        recognition.start();
-
-        recognition.onresult = function(e) {
-            var text = e.results[0][0].transcript;
-
-            // Send to Streamlit input box
-            const input = window.parent.document.querySelector('input[type="text"]');
-            input.value = text;
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-        };
-
-        recognition.onerror = function(e) {
-            alert("Voice error: " + e.error);
-        };
-    } else {
+    if (!SpeechRecognition) {
         alert("Voice not supported in this browser");
+        return;
     }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = "en-US";
+    recognition.start();
+
+    recognition.onresult = function(event) {
+        const text = event.results[0][0].transcript;
+
+        const input = window.parent.document.querySelector('input[type="text"]');
+        input.value = text;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+    };
 }
 </script>
 """
 
+st.sidebar.markdown("## 🎤 Voice Search")
 components.html(voice_html, height=80)
 
 # =========================================================
@@ -142,7 +139,7 @@ def ai_score(row):
     return (row["rating_num"] * 50) + (row["reviews_num"] / 100) - (row["price_num"] / 1000)
 
 # =========================================================
-# FETCH DATA
+# FETCH
 # =========================================================
 def fetch(q):
 
@@ -178,14 +175,11 @@ def fetch(q):
     return pd.DataFrame(items)
 
 # =========================================================
-# HUMAN FILTER MEMORY
+# MEMORY FILTER
 # =========================================================
 def apply_memory(df):
-    disliked = st.session_state.memory.get("disliked", set())
-
-    for b in disliked:
+    for b in st.session_state.memory["disliked"]:
         df = df[~df["Product"].str.lower().str.contains(b)]
-
     return df if not df.empty else df
 
 # =========================================================
@@ -193,15 +187,15 @@ def apply_memory(df):
 # =========================================================
 def why_buy(r):
     if r["rating_num"] >= 4.3:
-        return "Highly trusted by buyers"
+        return "Highly trusted"
     if r["reviews_num"] > 1000:
-        return "Very popular choice"
+        return "Very popular"
     if r["price_num"] < 2000:
         return "Great value"
     return "Balanced option"
 
 # =========================================================
-# AI ASSISTANT (HUMAN STYLE)
+# AI ENGINE (NO HISTORY LOGIC)
 # =========================================================
 def assistant(q, df):
 
@@ -210,46 +204,29 @@ def assistant(q, df):
 
     ql = q.lower()
 
+    # store last only
+    st.session_state.last_q = q
+
     brands = ["puma", "nike", "adidas", "reebok"]
 
     for b in brands:
         if f"dont want {b}" in ql or f"don't want {b}" in ql:
             st.session_state.memory["disliked"].add(b)
-            return f"🚫 Got it. I will avoid {b} products."
+            return f"🚫 I will avoid {b}"
 
     df = apply_memory(df)
 
     if "compare" in ql or "vs" in ql:
         top = df.sort_values("ai_score", ascending=False).head(2)
-
-        if len(top) < 2:
-            return "Not enough products."
-
         a, b = top.iloc[0], top.iloc[1]
-
-        return f"""
-🆚 Comparison:
-
-👉 {a['Product']} (Better overall)
-👉 {b['Product']} (Alternative)
-
-🏆 Recommendation: {a['Product']}
-"""
+        return f"🆚 {a['Product']} is better than {b['Product']}"
 
     if "under" in ql or "budget" in ql:
         best = df.sort_values("price_num").head(3)
-        return "💸 Budget picks:\n" + "\n".join(best["Product"])
+        return "💸 " + ", ".join(best["Product"].tolist())
 
     best = df.sort_values("ai_score", ascending=False).iloc[0]
-
-    return f"""
-🔥 Best Pick:
-
-👉 {best['Product']}
-💰 {best['Price']}
-
-🧠 {why_buy(best)}
-"""
+    return f"🔥 Best pick: {best['Product']}"
 
 # =========================================================
 # MAIN SEARCH
@@ -282,34 +259,27 @@ if st.button("🚀 SEARCH DEALS"):
     st.write(featured["Price"])
     st.link_button("🛒 Buy Now", featured["Link"])
 
-    cols = st.columns(3)
-
-    for i, r in enumerate(pool[:6]):
-        with cols[i % 3]:
-            st.image(r["Image"], use_container_width=True)
-            st.write(r["Product"])
-            st.write(r["Price"])
-            st.link_button("Buy", r["Link"])
-
 # =========================================================
-# ASSISTANT PANEL (SIDE)
+# AI PANEL (LAST ONLY)
 # =========================================================
-st.sidebar.markdown("## 🤖 DealGenie AI Assistant")
+st.sidebar.markdown("## 🤖 DealGenie AI")
 
-ask = st.sidebar.text_input("Ask anything (compare / best / budget / brand)")
+ask = st.sidebar.text_input("Ask anything")
 
-if st.sidebar.button("Ask AI"):
+if st.sidebar.button("Ask"):
 
     df = st.session_state.get("df", None)
 
     reply = assistant(ask, df)
 
-    st.session_state.chat.append(("you", ask))
-    st.session_state.chat.append(("ai", reply))
+    # overwrite ONLY last
+    st.session_state.last_a = reply
 
-# CHAT DISPLAY
-for r in st.session_state.chat:
-    if r[0] == "you":
-        st.sidebar.markdown(f"🧑 {r[1]}")
-    else:
-        st.sidebar.markdown(f"🤖 {r[1]}")
+# SHOW ONLY LAST Q/A
+if st.session_state.last_q:
+    st.sidebar.markdown("### 🧑 You")
+    st.sidebar.write(st.session_state.last_q)
+
+if st.session_state.last_a:
+    st.sidebar.markdown("### 🤖 DealGenie")
+    st.sidebar.write(st.session_state.last_a)
