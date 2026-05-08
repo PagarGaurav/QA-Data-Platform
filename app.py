@@ -9,7 +9,7 @@ import re
 st.set_page_config(page_title="DealGenie", layout="wide")
 
 # =========================================================
-# UI STYLE (UPDATED BACKGROUND ONLY)
+# STYLE (CLEAN + FIXED)
 # =========================================================
 st.markdown("""
 <style>
@@ -20,7 +20,7 @@ st.markdown("""
     font-family: Arial;
 }
 
-/* HERO (NEW: SHOPPING + DISCOUNT + DEALS THEME) */
+/* HERO */
 .hero {
     background: linear-gradient(90deg, rgba(0,0,0,0.85), rgba(0,0,0,0.4)),
     url('https://images.unsplash.com/photo-1607082350899-7e105aa886ae');
@@ -30,37 +30,37 @@ st.markdown("""
     margin-bottom:20px;
 }
 
-/* CARD FIX */
-.card {
+/* PRODUCT CARD (FIXED EQUAL HEIGHT) */
+.product-card {
     background:#111;
     border-radius:14px;
     padding:12px;
     border:1px solid #222;
-    height:460px;
+    height:520px;
     display:flex;
     flex-direction:column;
     justify-content:space-between;
 }
 
-/* IMAGE FIX */
-.card-img {
+/* IMAGE */
+.img-box {
     width:100%;
-    height:200px;
+    height:220px;
     display:flex;
     align-items:center;
     justify-content:center;
-    background:#0d0d0d;
+    background:#1a1a1a;
     border-radius:10px;
     overflow:hidden;
 }
 
-.card-img img {
+.img-box img {
     max-height:100%;
     max-width:100%;
     object-fit:contain;
 }
 
-/* BUY BUTTON RED */
+/* BUY BUTTON */
 .stLinkButton a {
     background-color:#ff2d2d !important;
     color:white !important;
@@ -71,12 +71,23 @@ st.markdown("""
     display:inline-block;
 }
 
-/* SEARCH BUTTON FIX */
+/* SEARCH BUTTON */
 .stButton > button {
     background:#ff2d2d;
     color:white;
     font-weight:800;
     border-radius:10px;
+}
+
+/* RATING */
+.rating {
+    color:#ffd700;
+    font-weight:700;
+}
+
+.small {
+    font-size:12px;
+    color:#bbb;
 }
 
 </style>
@@ -87,24 +98,24 @@ st.markdown("""
 # =========================================================
 st.markdown("""
 <div class="hero">
-<h1>🛍 DealGenie</h1>
+<h1>🛍 DealGenie AI Shopping</h1>
 <h3>Smart deals. Real savings. Best prices online.</h3>
 </div>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# MENU
+# SIDEBAR
 # =========================================================
 st.sidebar.markdown("## ☰ Menu")
 
 api_key = st.sidebar.text_input("SerpAPI Key", type="password")
 country = st.sidebar.selectbox("Country", ["India", "US"])
-max_products = st.sidebar.slider("Show Results", 5, 40, 5)
+max_products = st.sidebar.slider("Show Results", 6, 30, 6)
 
 query = st.text_input("🔎 Search Product")
 
 # =========================================================
-# FETCH
+# FETCH DATA
 # =========================================================
 def fetch(q, api_key, country):
 
@@ -127,14 +138,14 @@ def fetch(q, api_key, country):
         price_text = x.get("price") or "0"
         price_num = int(re.sub(r"[^\d]", "", str(price_text)) or 0)
 
-        link = x.get("link") or x.get("product_link") or ""
-
         items.append({
             "Product": x.get("title"),
             "Price": price_text,
             "PriceNum": price_num,
-            "Link": link,
-            "Image": x.get("thumbnail")
+            "Link": x.get("link") or x.get("product_link") or "",
+            "Image": x.get("thumbnail"),
+            "Rating": x.get("rating"),
+            "Reviews": x.get("reviews")
         })
 
     return pd.DataFrame(items)
@@ -149,14 +160,13 @@ def score(row):
     return 1 / (row["PriceNum"] + 1)
 
 # =========================================================
-# SAFE BUY
+# BUY BUTTON
 # =========================================================
 def safe_buy(url, key):
-
-    if not url:
-        st.button("No Link Available", disabled=True, key=f"no_{key}")
-    else:
+    if url:
         st.link_button("🛒 Buy Now", url, key=f"buy_{key}")
+    else:
+        st.button("No Link Available", disabled=True, key=f"no_{key}")
 
 # =========================================================
 # MAIN
@@ -174,14 +184,10 @@ if st.button("🔎 Search Product"):
         st.stop()
 
     df = df[df["Product"].apply(lambda x: is_relevant(x, query))]
-
     df["Score"] = df.apply(score, axis=1)
     df = df.sort_values("Score", ascending=False).head(max_products)
 
-    # =====================================================
-    # GRID DISPLAY
-    # =====================================================
-    st.markdown("## 🔥 Deals")
+    st.markdown("## 🔥 Best Deals")
 
     cols = st.columns(3)
 
@@ -189,18 +195,29 @@ if st.button("🔎 Search Product"):
 
         with cols[i % 3]:
 
-            st.markdown('<div class="card">', unsafe_allow_html=True)
+            st.markdown('<div class="product-card">', unsafe_allow_html=True)
 
             img = r["Image"] if r["Image"] else "https://via.placeholder.com/300"
 
             st.markdown(f"""
-            <div class="card-img">
+            <div class="img-box">
                 <img src="{img}">
             </div>
             """, unsafe_allow_html=True)
 
-            st.markdown(f"**{r['Product'][:60]}**")
-            st.write(r["Price"])
+            st.markdown(f"**{str(r['Product'])[:60]}**")
+
+            st.write(f"💰 {r['Price']}")
+
+            # Rating
+            rating = r.get("Rating")
+            reviews = r.get("Reviews")
+
+            if rating:
+                st.markdown(f"<div class='rating'>⭐ {rating} / 5</div>", unsafe_allow_html=True)
+
+            if reviews:
+                st.markdown(f"<div class='small'>{reviews} reviews</div>", unsafe_allow_html=True)
 
             safe_buy(r["Link"], i)
 
