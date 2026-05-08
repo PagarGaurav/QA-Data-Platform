@@ -14,35 +14,87 @@ st.set_page_config(
 )
 
 # =========================================================
-# CUSTOM UI
+# PREMIUM GEN-Z UI
 # =========================================================
 st.markdown("""
 <style>
+
+/* =======================================================
+BACKGROUND
+======================================================= */
 .stApp {
     background: linear-gradient(135deg,#070b14,#0f172a,#111827);
-    color: white;
+    color: #f8fafc;
 }
 
+/* =======================================================
+SIDEBAR
+======================================================= */
+section[data-testid="stSidebar"] {
+    background: linear-gradient(180deg,#0f172a,#111827) !important;
+    border-right: 1px solid rgba(255,255,255,0.06);
+}
+
+/* MENU TITLE */
+section[data-testid="stSidebar"] h2 {
+    color: #ffffff !important;
+    font-weight: 900 !important;
+    letter-spacing: 0.5px;
+    font-size: 28px !important;
+    margin-bottom: 20px !important;
+}
+
+/* =======================================================
+BUTTONS
+======================================================= */
 .stButton > button {
     background: linear-gradient(90deg,#a855f7,#ec4899);
-    color:#f8fafc;
-    border-radius:10px;
+    color:#ffffff;
+    border-radius:14px;
     border:none;
-    padding:10px 16px;
-    font-weight:600;
+    padding:12px 20px;
+    font-weight:700;
+    transition: all 0.3s ease;
 }
 
+.stButton > button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 20px rgba(236,72,153,0.4);
+}
+
+/* =======================================================
+DOWNLOAD BUTTONS
+======================================================= */
 .stDownloadButton > button {
     background:#f8fafc !important;
     color:#0f172a !important;
-    border-radius:10px;
-    font-weight:600;
+    border-radius:12px;
+    font-weight:700;
 }
 
-section[data-testid="stSidebar"] {
-    background: linear-gradient(180deg,#0f172a,#111827) !important;
+/* =======================================================
+INPUTS
+======================================================= */
+.stTextInput input {
+    background:rgba(15,23,42,0.85) !important;
+    color:white !important;
+    border-radius:14px !important;
+    border:1px solid rgba(255,255,255,0.08) !important;
+    padding:14px !important;
+    font-size:16px !important;
 }
 
+/* =======================================================
+SELECTBOX
+======================================================= */
+.stSelectbox div[data-baseweb="select"] {
+    background:rgba(15,23,42,0.85) !important;
+    border-radius:12px !important;
+}
+
+/* =======================================================
+CARDS
+======================================================= */
 .card {
     background: rgba(17,24,39,0.75);
     backdrop-filter: blur(16px);
@@ -60,15 +112,9 @@ section[data-testid="stSidebar"] {
     box-shadow:0 0 20px rgba(236,72,153,0.25);
 }
 
-.metric-card {
-    background: linear-gradient(145deg,#111827,#1e293b);
-    padding:18px;
-    border-radius:18px;
-    text-align:center;
-    border:1px solid #334155;
-    box-shadow: 0 6px 20px rgba(0,0,0,0.2);
-}
-
+/* =======================================================
+AI BOX
+======================================================= */
 .ai-box {
     background: linear-gradient(145deg,#1e293b,#0f172a);
     padding:18px;
@@ -78,45 +124,73 @@ section[data-testid="stSidebar"] {
     box-shadow: 0 6px 18px rgba(0,0,0,0.2);
 }
 
-.stTextInput input {
-    background:rgba(15,23,42,0.85) !important;
-    color:white !important;
-    border-radius:14px !important;
-    border:1px solid rgba(255,255,255,0.08) !important;
-    padding:14px !important;
-    font-size:16px !important;
+/* =======================================================
+METRIC CARDS
+======================================================= */
+.metric-card {
+    background: rgba(17,24,39,0.75);
+    backdrop-filter: blur(16px);
+    padding:18px;
+    border-radius:18px;
+    text-align:center;
+    border:1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.2);
 }
 
-.stSelectbox div[data-baseweb="select"] {
-    background:#111827 !important;
-    border-radius:12px !important;
-}
-
-.stSlider {
-    padding-top:10px;
-}
-
+/* =======================================================
+HR
+======================================================= */
 hr {
     border-color:#1e293b !important;
 }
+
 </style>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# TITLE
+# HEADER
 # =========================================================
 st.markdown("""
 <div style='text-align:center;padding:10px 0 25px 0;'>
-    <h1 style='font-size:58px;font-weight:900;margin-bottom:5px;background:linear-gradient(90deg,#a855f7,#ec4899,#38bdf8);-webkit-background-clip:text;-webkit-text-fill-color:transparent;'>🛍 DealGenie</h1>
-    <h3 style='color:#cbd5e1;font-weight:500;letter-spacing:1px;'>AI Shopping Assistant</h3>
-    <p style='color:#94a3b8;font-size:18px;'>Compare products across brands with smart AI-powered shopping intelligence</p>
+
+<h1 style='
+font-size:58px;
+font-weight:900;
+margin-bottom:5px;
+background:linear-gradient(90deg,#a855f7,#ec4899,#38bdf8);
+-webkit-background-clip:text;
+-webkit-text-fill-color:transparent;
+'>
+🛍 DealGenie
+</h1>
+
+<h3 style='
+color:#cbd5e1;
+font-weight:500;
+letter-spacing:1px;
+'>
+AI Shopping Assistant
+</h3>
+
+<p style='
+color:#94a3b8;
+font-size:18px;
+'>
+Compare products across brands with smart AI-powered shopping intelligence
+</p>
+
 </div>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# SIDEBAR
+# SIDEBAR MENU
 # =========================================================
-st.sidebar.title("✨ Menu")
+st.sidebar.markdown(
+    """
+    <h2>✨ Menu</h2>
+    """,
+    unsafe_allow_html=True
+)
 
 api_key = st.sidebar.text_input(
     "🔑 SerpAPI Key",
@@ -179,7 +253,7 @@ def safe_rating(value):
 
 
 # =========================================================
-# AI INSIGHT ENGINE
+# AI INSIGHTS
 # =========================================================
 def generate_ai_insights(df):
 
@@ -194,28 +268,32 @@ def generate_ai_insights(df):
         f"🏆 Cheapest product available on {cheapest['Platform']} for {cheapest['Price']}"
     )
 
-    best_rated = df.sort_values("rating_num", ascending=False).iloc[0]
+    best_rated = df.sort_values(
+        "rating_num",
+        ascending=False
+    ).iloc[0]
 
     insights.append(
         f"⭐ Highest rated product: {best_rated['Product'][:60]}"
     )
 
-    most_reviewed = df.sort_values("reviews_num", ascending=False).iloc[0]
+    most_reviewed = df.sort_values(
+        "reviews_num",
+        ascending=False
+    ).iloc[0]
 
     insights.append(
         f"🔥 Most reviewed product has {most_reviewed['Reviews']} reviews"
     )
 
-    if df["price_num"].max() > 0:
+    savings = (
+        df["price_num"].max() -
+        df["price_num"].min()
+    )
 
-        savings = (
-            df["price_num"].max() -
-            df["price_num"].min()
-        )
-
-        insights.append(
-            f"💰 Potential savings opportunity: ₹{savings:,}"
-        )
+    insights.append(
+        f"💰 Potential savings opportunity: ₹{savings:,}"
+    )
 
     return insights
 
@@ -247,9 +325,10 @@ def fetch_products(search_query):
     if "error" in data:
         raise Exception(data["error"])
 
-    shopping_results = data.get("shopping_results", [])
-
-    shopping_results = shopping_results[:max_products]
+    shopping_results = data.get(
+        "shopping_results",
+        []
+    )[:max_products]
 
     products = []
 
@@ -300,7 +379,9 @@ if st.button("🚀 Compare Prices"):
         st.warning("Please enter product name")
         st.stop()
 
-    with st.spinner("Fetching real-time products and generating AI insights..."):
+    with st.spinner(
+        "Fetching real-time products and generating AI insights..."
+    ):
 
         try:
             products = fetch_products(query)
@@ -322,13 +403,22 @@ if st.button("🚀 Compare Prices"):
     # SORTING
     # =====================================================
     if sort_option == "Cheapest First":
+
         df = df.sort_values("price_num")
 
     elif sort_option == "Highest Rated":
-        df = df.sort_values("rating_num", ascending=False)
+
+        df = df.sort_values(
+            "rating_num",
+            ascending=False
+        )
 
     elif sort_option == "Most Reviewed":
-        df = df.sort_values("reviews_num", ascending=False)
+
+        df = df.sort_values(
+            "reviews_num",
+            ascending=False
+        )
 
     # =====================================================
     # METRICS
@@ -365,6 +455,7 @@ if st.button("🚀 Compare Prices"):
     # AI INSIGHTS
     # =====================================================
     st.markdown("---")
+
     st.subheader("🧠 AI Shopping Insights")
 
     insights = generate_ai_insights(df)
@@ -384,6 +475,7 @@ if st.button("🚀 Compare Prices"):
     # PRODUCT CARDS
     # =====================================================
     st.markdown("---")
+
     st.subheader("🛍 Product Comparison")
 
     min_price = df["price_num"].min()
@@ -401,6 +493,7 @@ if st.button("🚀 Compare Prices"):
         with col1:
 
             if row["Image"]:
+
                 st.image(
                     row["Image"],
                     width=180
@@ -415,7 +508,9 @@ if st.button("🚀 Compare Prices"):
                    target="_blank"
                    rel="noopener noreferrer"
                    style="text-decoration:none;color:white;">
+
                     <h3>{row['Product']}</h3>
+
                 </a>
                 ''',
                 unsafe_allow_html=True
@@ -430,7 +525,7 @@ if st.button("🚀 Compare Prices"):
             if row["Reviews"]:
                 st.write(f"📝 Reviews: {row['Reviews']}")
 
-            # CHEAPEST BADGE
+            # BEST DEAL
             if row["price_num"] == min_price:
                 st.success("🏆 Best Deal Available")
 
@@ -442,13 +537,13 @@ if st.button("🚀 Compare Prices"):
                    rel="noopener noreferrer">
 
                     <button style="
-                        background: linear-gradient(90deg,#6366f1,#3b82f6);
+                        background: linear-gradient(90deg,#a855f7,#ec4899);
                         color:white;
                         border:none;
                         padding:10px 18px;
                         border-radius:10px;
                         cursor:pointer;
-                        font-weight:600;
+                        font-weight:700;
                     ">
                         🛒 Buy Now
                     </button>
@@ -458,12 +553,16 @@ if st.button("🚀 Compare Prices"):
                 unsafe_allow_html=True
             )
 
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown(
+            '</div>',
+            unsafe_allow_html=True
+        )
 
     # =====================================================
-    # TABLE VIEW
+    # TABLE
     # =====================================================
     st.markdown("---")
+
     st.subheader("📊 Comparison Table")
 
     st.dataframe(
@@ -481,6 +580,7 @@ if st.button("🚀 Compare Prices"):
     # DOWNLOADS
     # =====================================================
     st.markdown("---")
+
     st.subheader("⬇ Export Results")
 
     d1, d2, d3 = st.columns(3)
@@ -522,6 +622,7 @@ if st.button("🚀 Compare Prices"):
 # FOOTER
 # =========================================================
 st.markdown("---")
+
 st.caption(
-    "Enterprise AI Shopping Assistant • Real-time product comparison • AI-ready architecture"
+    "DealGenie • AI-powered product comparison • Enterprise shopping assistant"
 )
