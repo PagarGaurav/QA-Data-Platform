@@ -2,27 +2,27 @@ import streamlit as st
 import pandas as pd
 import requests
 import re
-from datetime import datetime
 
 # =========================================================
 # CONFIG
 # =========================================================
-st.set_page_config(page_title="DealGenie AI Netflix Shop", layout="wide")
+st.set_page_config(page_title="DealGenie AI Shopping", layout="wide")
 
 # =========================================================
-# NETFLIX RED + BLACK UI
+# CLEAN DARK AI SHOPPING THEME (NO NETFLIX WORDS)
 # =========================================================
 st.markdown("""
 <style>
 
 .stApp {
-    background:#000;
+    background: radial-gradient(circle at top,#0b0b0b,#000);
     color:white;
+    font-family: Arial;
 }
 
 /* BUTTON */
 .stButton > button {
-    background:#e50914;
+    background:#ff2d2d;
     color:white;
     font-weight:800;
     border-radius:10px;
@@ -31,26 +31,28 @@ st.markdown("""
 /* HERO */
 .hero {
     background: linear-gradient(90deg,#000,rgba(0,0,0,0.3)),
-    url('https://images.unsplash.com/photo-1523275335684-37898b6baf30');
+    url('https://images.unsplash.com/photo-1518770660439-4636190af475');
     background-size:cover;
-    padding:50px;
+    padding:60px;
     border-radius:20px;
     margin-bottom:20px;
 }
 
+/* CARD */
 .card {
-    background:#141414;
-    border-radius:12px;
+    background:#111;
+    border-radius:14px;
     overflow:hidden;
     border:1px solid #222;
     transition:0.3s;
 }
 
 .card:hover {
-    transform:scale(1.04);
-    border:1px solid #e50914;
+    transform:scale(1.03);
+    border:1px solid #ff2d2d;
 }
 
+/* ROW */
 .row {
     display:flex;
     overflow-x:auto;
@@ -69,18 +71,17 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =========================================================
-# HERO
+# HERO (NO NETFLIX WORD)
 # =========================================================
 st.markdown("""
 <div class="hero">
-<h1>🛍 DealGenie AI</h1>
-<h3>Netflix Style Smart Shopping</h3>
-<p>AI recommends. You save money.</p>
+<h1>🛍 AI Shopping Assistant</h1>
+<h3>Smart recommendations. Real savings.</h3>
 </div>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# SIDEBAR
+# INPUTS
 # =========================================================
 api_key = st.sidebar.text_input("SerpAPI Key", type="password")
 country = st.sidebar.selectbox("Country", ["India", "US"])
@@ -106,15 +107,10 @@ def reviews_num(x):
     return int(nums) if nums else 0
 
 def ai_score(row):
-    # 🔥 SIMPLE AI RANKING MODEL
-    return (
-        (row["rating_num"] * 40) +
-        (row["reviews_num"] / 100) -
-        (row["price_num"] / 1000)
-    )
+    return (row["rating_num"]*50) + (row["reviews_num"]/100) - (row["price_num"]/1000)
 
 # =========================================================
-# FETCH
+# FETCH DATA
 # =========================================================
 def fetch(q):
 
@@ -135,17 +131,14 @@ def fetch(q):
 
     for x in results:
 
-        link = x.get("product_link") or x.get("link") or "#"
-        img = x.get("thumbnail") or "https://via.placeholder.com/300"
-
         items.append({
             "Product": x.get("title"),
             "Price": x.get("price"),
             "Platform": x.get("source"),
             "Rating": x.get("rating", 0),
             "Reviews": x.get("reviews", 0),
-            "Link": link,
-            "Image": img,
+            "Link": x.get("link") or x.get("product_link"),
+            "Image": x.get("thumbnail") or "https://via.placeholder.com/300",
             "price_num": price_num(x.get("price")),
             "rating_num": safe_float(x.get("rating")),
             "reviews_num": reviews_num(x.get("reviews"))
@@ -154,45 +147,26 @@ def fetch(q):
     return pd.DataFrame(items)
 
 # =========================================================
-# ROW RENDER
+# ROW RENDER (SAFE - NO HTML BREAK)
 # =========================================================
 def row(title, df):
 
     st.markdown(f"## {title}")
-    st.markdown("<div class='row'>", unsafe_allow_html=True)
 
-    for _, r in df.iterrows():
+    cols = st.columns(4)
 
-        st.markdown(f"""
-        <div class="item">
-        <a href="{r['Link']}" target="_blank">
+    for i, (_, r) in enumerate(df.iterrows()):
 
-        <div class="card">
+        with cols[i % 4]:
 
-            <img src="{r['Image']}" width="100%">
+            st.image(r["Image"], use_container_width=True)
 
-            <div style="padding:10px;">
+            st.markdown(f"### {r['Product'][:50]}")
+            st.write(f"🏬 {r['Platform']}")
+            st.write(f"💰 {r['Price']}")
+            st.write(f"⭐ {r['Rating']}")
 
-                <div style="color:#e50914;font-size:12px;">
-                    {r['Platform']}
-                </div>
-
-                <div style="font-weight:700;height:40px;overflow:hidden;">
-                    {r['Product'][:50]}
-                </div>
-
-                <div>💰 {r['Price']}</div>
-                <div>⭐ {r['Rating']}</div>
-
-            </div>
-
-        </div>
-
-        </a>
-        </div>
-        """, unsafe_allow_html=True)
-
-    st.markdown("</div>", unsafe_allow_html=True)
+            st.link_button("🛒 Buy Now", r["Link"])
 
 # =========================================================
 # MAIN
@@ -200,53 +174,49 @@ def row(title, df):
 if st.button("🚀 Start AI Shopping"):
 
     if not api_key or not query:
-        st.warning("Enter API key + product")
+        st.warning("Enter API key and product")
         st.stop()
 
     df = fetch(query)
 
-    # =========================
     # AI SCORE
-    # =========================
     df["ai_score"] = df.apply(ai_score, axis=1)
-
-    featured = df.iloc[0]
 
     # =========================
     # FEATURED
     # =========================
-    st.markdown("## 🔥 Featured Deal")
+    featured = df.iloc[0]
 
-    st.markdown(f"""
-    <div style="background:#111;padding:20px;border-radius:15px;border:1px solid #e50914;">
-        <h2>{featured['Product']}</h2>
-        <h3 style="color:#e50914;">💰 {featured['Price']}</h3>
-        <a href="{featured['Link']}" target="_blank">
-            <button>🛒 Buy Now</button>
-        </a>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown("## 🔥 Best Deal")
 
-    # =========================
-    # AI ROW (NEW)
-    # =========================
-    row("🧠 AI Recommended For You", df.sort_values("ai_score", ascending=False).head(10))
+    st.image(featured["Image"], width=300)
+
+    st.markdown(f"### {featured['Product']}")
+    st.write(f"💰 {featured['Price']}")
+    st.write(f"⭐ {featured['Rating']}")
+
+    st.link_button("🛒 Buy Now", featured["Link"])
 
     # =========================
-    # NETFLIX ROWS
+    # AI RECOMMENDED (FIXED)
     # =========================
-    row("💸 Budget Picks", df.sort_values("price_num").head(10))
-    row("⭐ Top Rated", df.sort_values("rating_num", ascending=False).head(10))
-    row("🔥 Trending", df.sort_values("reviews_num", ascending=False).head(10))
+    row("🧠 AI Recommended For You",
+        df.sort_values("ai_score", ascending=False).head(8))
 
     # =========================
-    # TABLE
+    # OTHER ROWS
     # =========================
-    st.markdown("---")
-    st.dataframe(df)
+    row("💸 Budget Deals",
+        df.sort_values("price_num").head(8))
+
+    row("⭐ Top Rated",
+        df.sort_values("rating_num", ascending=False).head(8))
+
+    row("🔥 Trending",
+        df.sort_values("reviews_num", ascending=False).head(8))
 
 # =========================================================
 # FOOTER
 # =========================================================
 st.markdown("---")
-st.caption("DealGenie AI • Fixed Netflix Shopping Engine")
+st.caption("AI Shopping Assistant • Clean Production Version")
