@@ -49,10 +49,10 @@ img {
 """, unsafe_allow_html=True)
 
 # =========================================================
-# HEADER
+# HEADER (UPDATED NAME ONLY)
 # =========================================================
 st.markdown("# 🛍 DealGenie")
-st.markdown("### AI Shopping Copilot")
+st.markdown("### 🧠 DealGenie AI Shopping Assistant")
 
 # =========================================================
 # SIDEBAR
@@ -70,12 +70,12 @@ query = st.text_input("Search Product")
 search_btn = st.button("Search")
 
 # =========================================================
-# OPENAI CLIENT (SAFE INIT)
+# OPENAI CLIENT
 # =========================================================
 client = OpenAI(api_key=openai_key) if openai_key else None
 
 # =========================================================
-# SESSION STATE (IMPORTANT FIX)
+# SESSION STATE
 # =========================================================
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
@@ -116,7 +116,7 @@ def fetch(q, api_key, country):
     return pd.DataFrame(items)
 
 # =========================================================
-# AI LOGIC (UNCHANGED)
+# AI LOGIC
 # =========================================================
 def detect_intent(q):
     q = q.lower()
@@ -151,31 +151,28 @@ def rank(df, intent):
     return df.sort_values("AI_Score", ascending=False)
 
 # =========================================================
-# 🧠 GPT COPILOT (FIXED + SAFE)
+# GPT COPILOT
 # =========================================================
 def ask_dealgenie(question, context=""):
 
     if client is None:
-        return "⚠️ Enter OpenAI API key in sidebar to enable AI Copilot."
+        return "⚠️ Enter OpenAI API key in sidebar to enable AI Assistant."
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are DealGenie AI Copilot. Help users choose products, compare them, and suggest best value options clearly."
-                },
-                {
-                    "role": "user",
-                    "content": f"{question}\n\nContext:\n{context}"
-                }
-            ]
-        )
-        return response.choices[0].message.content
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {
+                "role": "system",
+                "content": "You are DealGenie AI Shopping Assistant. Help users choose and compare products."
+            },
+            {
+                "role": "user",
+                "content": f"{question}\n\nContext:\n{context}"
+            }
+        ]
+    )
 
-    except Exception as e:
-        return f"⚠️ GPT Error: {str(e)}"
+    return response.choices[0].message.content
 
 # =========================================================
 # MAIN FLOW
@@ -213,10 +210,8 @@ if search_btn:
 
             with col:
 
-                st.image(
-                    r["Image"] if r["Image"] else "https://via.placeholder.com/300",
-                    use_container_width=True
-                )
+                st.image(r["Image"] if r["Image"] else "https://via.placeholder.com/300",
+                         use_container_width=True)
 
                 st.markdown(f"**{r['Product']}**")
                 st.write(f"💰 {r['Price']}")
@@ -228,14 +223,14 @@ if search_btn:
                     st.button("No Link", disabled=True)
 
 # =========================================================
-# 💬 ASK DEALGENIE (FIXED WORKING COPILOT)
+# CHAT COPILOT (UNCHANGED FUNCTIONALITY)
 # =========================================================
 st.markdown("---")
-st.markdown("## 💬 Ask DealGenie (AI Copilot)")
+st.markdown("## 💬 Ask DealGenie")
 
 user_q = st.text_input("Ask: compare, suggest, or decide", key="copilot_input")
 
-if st.button("Ask AI Copilot"):
+if st.button("Ask Assistant"):
 
     if user_q.strip():
 
@@ -249,7 +244,7 @@ if st.button("Ask AI Copilot"):
         st.session_state.chat_history.append(("You", user_q))
         st.session_state.chat_history.append(("DealGenie", answer))
 
-# CHAT DISPLAY (PERSISTENT FIX)
+# DISPLAY CHAT
 for role, msg in st.session_state.chat_history:
     if role == "You":
         st.markdown(f"**🧑 You:** {msg}")
