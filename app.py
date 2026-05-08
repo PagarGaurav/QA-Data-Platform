@@ -6,7 +6,7 @@ import re
 # =========================================================
 # CONFIG
 # =========================================================
-st.set_page_config(page_title="DealGenie Human AI", layout="wide")
+st.set_page_config(page_title="DealGenie Copilot AI", layout="wide")
 
 # =========================================================
 # THEME
@@ -25,6 +25,7 @@ st.markdown("""
     color:white;
     font-weight:800;
     border-radius:10px;
+    width:100%;
 }
 
 .hero {
@@ -40,39 +41,38 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =========================================================
-# MEMORY (HUMAN BEHAVIOR ENGINE)
-# =========================================================
-if "memory" not in st.session_state:
-    st.session_state.memory = {
-        "disliked_brands": set(),
-        "liked_brands": set()
-    }
-
-if "chat" not in st.session_state:
-    st.session_state.chat = []
-
-# =========================================================
 # HERO
 # =========================================================
 st.markdown("""
 <div class="hero">
-<h1>🛍 DealGenie Human AI</h1>
-<h3>It remembers your taste. It thinks like a shopper.</h3>
+<h1>🛍 DealGenie Copilot AI</h1>
+<h3>Smart shopping assistant with real decision power</h3>
 </div>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# SIDEBAR AI
+# SESSION STATE
 # =========================================================
-st.sidebar.markdown("## 💬 AI Assistant")
+if "chat" not in st.session_state:
+    st.session_state.chat = []
 
+if "df" not in st.session_state:
+    st.session_state.df = None
+
+if "memory" not in st.session_state:
+    st.session_state.memory = {"disliked": set()}
+
+# =========================================================
+# SIDEBAR SETTINGS
+# =========================================================
 api_key = st.sidebar.text_input("SerpAPI Key", type="password")
 country = st.sidebar.selectbox("Country", ["India", "US"])
 max_products = st.sidebar.slider("Deals shown", 5, 40, 5)
 
-query = st.text_input("Search Product")
-
-user_q = st.sidebar.text_input("Ask AI (compare / budget / dislike brand)")
+# =========================================================
+# MAIN SEARCH
+# =========================================================
+query = st.text_input("🔎 Search Products")
 
 # =========================================================
 # HELPERS
@@ -95,7 +95,7 @@ def ai_score(row):
     return (row["rating_num"] * 50) + (row["reviews_num"] / 100) - (row["price_num"] / 1000)
 
 # =========================================================
-# FETCH DATA
+# FETCH
 # =========================================================
 def fetch(q):
 
@@ -131,64 +131,52 @@ def fetch(q):
     return pd.DataFrame(items)
 
 # =========================================================
-# HUMAN FILTER ENGINE
+# RENDER
 # =========================================================
-def apply_memory_filter(df):
+def row(title, items):
+    st.markdown(f"## {title}")
+    cols = st.columns(4)
 
-    disliked = st.session_state.memory["disliked_brands"]
-
-    if not disliked:
-        return df
-
-    filtered = df.copy()
-
-    for b in disliked:
-        filtered = filtered[~filtered["Product"].str.lower().str.contains(b)]
-
-    return filtered if not filtered.empty else df
-
-# =========================================================
-# WHY BUY (HUMAN STYLE)
-# =========================================================
-def why_buy(r):
-    if r["rating_num"] >= 4.3:
-        return "Trusted by most buyers"
-    if r["reviews_num"] > 1000:
-        return "Very popular choice"
-    if r["price_num"] < 2000:
-        return "Great value for money"
-    return "Balanced product choice"
+    for i, r in enumerate(items):
+        with cols[i % 4]:
+            st.image(r["Image"], use_container_width=True)
+            st.write(r["Product"])
+            st.write(r["Price"])
+            st.link_button("🛒 Buy", r["Link"])
 
 # =========================================================
 # HUMAN AI ENGINE
 # =========================================================
-def ai_reply(q, df):
+def copilot_response(q, df):
 
     if df is None or df.empty:
-        return "Search products first."
+        return "⚠️ Please search products first."
 
     ql = q.lower()
 
     # -----------------------------
-    # MEMORY UPDATE (DISLIKE BRAND)
+    # DISLIKE BRAND MEMORY
     # -----------------------------
-    brands = ["puma", "nike", "adidas", "reebok", "bata", "woodland"]
+    brands = ["puma", "nike", "adidas", "reebok"]
 
     for b in brands:
-        if f"don't want {b}" in ql or f"dont want {b}" in ql:
-            st.session_state.memory["disliked_brands"].add(b)
-            return f"🚫 Got it. I will avoid {b} products from now."
+        if f"dont want {b}" in ql or f"don't want {b}" in ql:
+            st.session_state.memory["disliked"].add(b)
+            return f"🚫 Noted: I will avoid {b} products."
+
+    filtered = df.copy()
+
+    for b in st.session_state.memory["disliked"]:
+        filtered = filtered[~filtered["Product"].str.lower().str.contains(b)]
+
+    if filtered.empty:
+        filtered = df
 
     # -----------------------------
-    # APPLY MEMORY FILTER
+    # COMPARE
     # -----------------------------
-    df = apply_memory_filter(df)
-
-    # -----------------------------
-    # COMPARE MODE
-    # -----------------------------
-    if "vs" in ql or "compare" in ql:
-        top = df.sort_values("ai_score", ascending=False).head(2)
+    if "compare" in ql or "vs" in ql:
+        top = filtered.sort_values("ai_score", ascending=False).head(2)
 
         if len(top) < 2:
             return "Not enough products to compare."
@@ -196,50 +184,35 @@ def ai_reply(q, df):
         a, b = top.iloc[0], top.iloc[1]
 
         return f"""
-🆚 Human-style comparison:
+🆚 Comparison:
 
-👉 {a['Product']}
-✔ Better overall value
+👉 {a['Product']} → Better overall value  
+👉 {b['Product']} → Alternative option  
 
-👉 {b['Product']}
-✔ Alternative option
-
-🏆 I recommend: {a['Product']}
-Because it balances price + trust + rating better.
+🏆 Winner: {a['Product']}
 """
 
     # -----------------------------
-    # BUDGET MODE
+    # BUDGET
     # -----------------------------
     if "under" in ql or "budget" in ql:
-        best = df.sort_values("price_num").head(3)
-        return "💸 Best budget picks:\n" + "\n".join(best["Product"])
+        best = filtered.sort_values("price_num").head(3)
+        return "💸 Budget picks:\n" + "\n".join(best["Product"])
 
     # -----------------------------
-    # GENERAL BEST PICK
+    # DEFAULT BEST
     # -----------------------------
-    best = df.sort_values("ai_score", ascending=False).iloc[0]
+    best = filtered.sort_values("ai_score", ascending=False).iloc[0]
 
-    return f"""
-🔥 Best human recommendation:
-
-👉 {best['Product']}
-💰 {best['Price']}
-⭐ {best['Rating']}
-
-🧠 Reason:
-{why_buy(best)}
-
-I avoided your disliked brands and picked best value option.
-"""
+    return f"🔥 Best pick: {best['Product']} ({best['Price']})"
 
 # =========================================================
-# MAIN APP
+# MAIN SEARCH BUTTON
 # =========================================================
-if st.button("🚀 Discover Smart Deals"):
+if st.button("🚀 SEARCH DEALS"):
 
     if not api_key or not query:
-        st.warning("Enter API key and product")
+        st.warning("Enter API key + product")
         st.stop()
 
     df = fetch(query)
@@ -250,61 +223,43 @@ if st.button("🚀 Discover Smart Deals"):
 
     df["ai_score"] = df.apply(ai_score, axis=1)
 
-    df = apply_memory_filter(df)
+    st.session_state.df = df
 
     pool = df.sort_values("ai_score", ascending=False).head(max_products).to_dict("records")
 
     featured = pool.pop(0)
 
-    st.markdown("## 🔥 Best Deal Today")
+    st.markdown("## 🔥 Best Deal")
     st.image(featured["Image"], width=300)
     st.write(featured["Product"])
     st.write(featured["Price"])
-    st.caption(why_buy(featured))
     st.link_button("🛒 Buy Now", featured["Link"])
 
-    # split
-    ai = pool[:2]
-    pool = pool[2:]
-
-    budget = pool[:2]
-    pool = pool[2:]
-
-    top = pool[:1]
-    pool = pool[1:]
-
-    trend = pool[:1]
-
-    def row(title, items):
-        st.markdown(f"## {title}")
-        cols = st.columns(4)
-        for i, r in enumerate(items):
-            with cols[i % 4]:
-                st.image(r["Image"], use_container_width=True)
-                st.write(r["Product"])
-                st.write(r["Price"])
-                st.caption(why_buy(r))
-                st.link_button("Buy", r["Link"])
-
-    row("🧠 AI Picks", ai)
-    row("💸 Budget", budget)
-    row("⭐ Top", top)
-    row("🔥 Trending", trend)
-
-    st.session_state.df = df
+    row("🧠 AI Picks", pool[:2])
+    row("💸 Budget", pool[2:4])
+    row("⭐ Top", pool[4:6])
 
 # =========================================================
-# SIDEBAR AI CHAT
+# COPILOT PANEL (IMPORTANT FIX)
 # =========================================================
-if user_q:
+st.sidebar.markdown("## 🤖 Copilot AI")
+
+copilot_input = st.sidebar.text_input("Ask Copilot")
+
+copilot_btn = st.sidebar.button("💬 Ask AI")
+
+if copilot_btn and copilot_input:
 
     df = st.session_state.get("df", None)
-    reply = ai_reply(user_q, df)
 
-    st.session_state.chat.append(("you", user_q))
+    reply = copilot_response(copilot_input, df)
+
+    st.session_state.chat.append(("you", copilot_input))
     st.session_state.chat.append(("ai", reply))
 
-# display chat
+# =========================================================
+# CHAT DISPLAY
+# =========================================================
 for r in st.session_state.chat:
     if r[0] == "you":
         st.sidebar.markdown(f"🧑 {r[1]}")
