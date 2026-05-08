@@ -9,7 +9,7 @@ import re
 st.set_page_config(page_title="DealGenie AI Shopping", layout="wide")
 
 # =========================================================
-# THEME (UNCHANGED)
+# ORIGINAL BRAND UI (RESTORED)
 # =========================================================
 st.markdown("""
 <style>
@@ -20,6 +20,7 @@ st.markdown("""
     font-family: Arial;
 }
 
+/* BUTTON */
 .stButton > button {
     background:#ff2d2d;
     color:white;
@@ -27,6 +28,7 @@ st.markdown("""
     border-radius:10px;
 }
 
+/* HERO */
 .hero {
     background: linear-gradient(90deg,#000,rgba(0,0,0,0.3)),
     url('https://images.unsplash.com/photo-1518770660439-4636190af475');
@@ -36,11 +38,19 @@ st.markdown("""
     margin-bottom:20px;
 }
 
+/* CARD STYLE RESTORED */
+.card {
+    background:#111;
+    border-radius:14px;
+    padding:12px;
+    border:1px solid #222;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# HERO
+# HERO (UNCHANGED BRAND)
 # =========================================================
 st.markdown("""
 <div class="hero">
@@ -50,7 +60,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =========================================================
-# SIDEBAR
+# SIDEBAR FILTER
 # =========================================================
 st.sidebar.markdown("## 🎛 Controls")
 
@@ -61,7 +71,7 @@ max_products = st.sidebar.slider("Show Results", 5, 40, 5)
 query = st.text_input("🔎 Search Product")
 
 # =========================================================
-# FETCH DATA
+# FETCH
 # =========================================================
 def fetch(q, api_key, country):
 
@@ -84,11 +94,14 @@ def fetch(q, api_key, country):
         price_text = x.get("price") or "0"
         price_num = int(re.sub(r"[^\d]", "", str(price_text)) or 0)
 
+        # ✅ FIX: multiple link fallbacks
+        link = x.get("link") or x.get("product_link") or ""
+
         items.append({
             "Product": x.get("title"),
             "Price": price_text,
             "PriceNum": price_num,
-            "Link": x.get("link"),
+            "Link": link,
             "Image": x.get("thumbnail")
         })
 
@@ -120,7 +133,7 @@ def is_relevant(title, intent):
     t = str(title).lower()
 
     mapping = {
-        "tshirt": ["tshirt", "t-shirt", "tee", "shirt"],
+        "tshirt": ["tshirt", "t-shirt", "tee", "shirt", "polo"],
         "shoes": ["shoe", "sneaker", "running"],
         "mobile": ["mobile", "phone"],
         "laptop": ["laptop"]
@@ -134,17 +147,17 @@ def is_relevant(title, intent):
     return any(k in t for k in keys)
 
 # =========================================================
-# AI SCORE
+# SCORE
 # =========================================================
 def score(row):
     return 1 / (row["PriceNum"] + 1)
 
 # =========================================================
-# SAFE BUY BUTTON (FIXED DUPLICATE ERROR)
+# SAFE BUY (FIXED)
 # =========================================================
 def safe_buy(url, key):
 
-    if not url:
+    if not url or str(url).strip() == "":
         st.button("🛒 No Link Available", disabled=True, key=f"no_{key}")
     else:
         st.link_button("🛒 Buy Now", url, key=f"buy_{key}")
@@ -178,17 +191,18 @@ if st.button("🚀 Search Product"):
     df = df.head(max_products)
 
     # =====================================================
-    # BEST DEAL
+    # BEST DEAL (CARD STYLE RESTORED)
     # =====================================================
     best = df.iloc[0]
 
     st.markdown("## 🔥 Best Deal")
 
+    st.markdown('<div class="card">', unsafe_allow_html=True)
     st.image(best["Image"], width=300)
     st.markdown(f"### {best['Product']}")
     st.write(best["Price"])
-
     safe_buy(best["Link"], 0)
+    st.markdown('</div>', unsafe_allow_html=True)
 
     # =====================================================
     # MORE DEALS
@@ -197,13 +211,12 @@ if st.button("🚀 Search Product"):
 
     cols = st.columns(3)
 
-    for i, r in enumerate(df.iterrows()):
-
-        idx, row = r
+    for i, r in df.iterrows():
 
         with cols[i % 3]:
-            st.image(row["Image"], use_container_width=True)
-            st.write(row["Product"])
-            st.write(row["Price"])
-
-            safe_buy(row["Link"], i + 1)
+            st.markdown('<div class="card">', unsafe_allow_html=True)
+            st.image(r["Image"], use_container_width=True)
+            st.write(r["Product"])
+            st.write(r["Price"])
+            safe_buy(r["Link"], i + 1)
+            st.markdown('</div>', unsafe_allow_html=True)
