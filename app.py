@@ -9,7 +9,7 @@ import re
 st.set_page_config(page_title="DealGenie", layout="wide")
 
 # =========================================================
-# STYLE (NETFLIX STYLE FIXED UI)
+# STYLE (SAFE + CONTROLLED ONLY)
 # =========================================================
 st.markdown("""
 <style>
@@ -30,21 +30,21 @@ st.markdown("""
     margin-bottom: 20px;
 }
 
-/* SCROLL ROW */
-.row {
+/* SCROLL AREA */
+.scroll-container {
     display: flex;
     overflow-x: auto;
     gap: 16px;
-    padding: 10px 5px;
+    padding: 10px;
 }
 
 /* HIDE SCROLLBAR */
-.row::-webkit-scrollbar {
+.scroll-container::-webkit-scrollbar {
     display: none;
 }
 
-/* CARD */
-.card {
+/* CARD FIXED SIZE */
+.product-card {
     min-width: 240px;
     max-width: 240px;
     background: #141414;
@@ -52,25 +52,32 @@ st.markdown("""
     overflow: hidden;
     flex-shrink: 0;
     border: 1px solid #222;
+    display: flex;
+    flex-direction: column;
+    height: 420px;
 }
 
-/* IMAGE */
-.card img {
+/* IMAGE FIX */
+.product-card img {
     width: 100%;
     height: 220px;
     object-fit: cover;
 }
 
-/* CONTENT */
+/* CONTENT AREA FIXED */
 .card-body {
     padding: 10px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    flex: 1;
 }
 
-/* TITLE */
+/* TITLE FIX */
 .title {
     font-size: 13px;
     font-weight: 600;
-    height: 38px;
+    height: 40px;
     overflow: hidden;
 }
 
@@ -107,7 +114,7 @@ st.markdown("""
 st.markdown("""
 <div class="hero">
 <h1>🛍 DealGenie AI Shopping</h1>
-<h3>Smart deals. Real savings. Netflix style product discovery.</h3>
+<h3>Smart deals. Real savings. Netflix-style browsing.</h3>
 </div>
 """, unsafe_allow_html=True)
 
@@ -118,12 +125,12 @@ st.sidebar.markdown("## ☰ Menu")
 
 api_key = st.sidebar.text_input("SerpAPI Key", type="password")
 country = st.sidebar.selectbox("Country", ["India", "US"])
-max_products = st.sidebar.slider("Max Products", 10, 30, 10)
+max_products = st.sidebar.slider("Show Results", 6, 30, 12)
 
 query = st.text_input("🔎 Search Product")
 
 # =========================================================
-# FETCH DATA
+# FETCH DATA (UNCHANGED LOGIC)
 # =========================================================
 def fetch(q, api_key, country):
 
@@ -189,22 +196,24 @@ if st.button("🔎 Search Product"):
     st.markdown("## 🔥 Top Deals")
 
     # =====================================================
-    # NETFLIX STYLE ROW
+    # NETFLIX STYLE STREAMLIT SCROLL ROW
     # =====================================================
-    html = '<div class="row">'
+    st.markdown('<div class="scroll-container">', unsafe_allow_html=True)
 
     for _, r in df.iterrows():
 
         img = r["Image"] if r["Image"] else "https://via.placeholder.com/300"
 
-        html += f"""
-        <div class="card">
+        st.markdown(f"""
+        <div class="product-card">
             <img src="{img}">
             <div class="card-body">
-                <div class="title">{str(r['Product'])[:60]}</div>
-                <div class="price">{r['Price']}</div>
-                <div style="font-size:12px; color:#aaa;">
-                    ⭐ {r['Rating'] if r.get('Rating') else '-'} / 5
+                <div>
+                    <div class="title">{str(r['Product'])[:60]}</div>
+                    <div class="price">{r['Price']}</div>
+                    <div style="font-size:12px; color:#aaa;">
+                        ⭐ {r['Rating'] if r.get('Rating') else '-'} / 5
+                    </div>
                 </div>
 
                 <a class="buy" href="{r['Link']}" target="_blank">
@@ -212,8 +221,6 @@ if st.button("🔎 Search Product"):
                 </a>
             </div>
         </div>
-        """
+        """, unsafe_allow_html=True)
 
-    html += "</div>"
-
-    st.markdown(html, unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
