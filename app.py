@@ -4,12 +4,12 @@ import requests
 import re
 
 # =========================================================
-# CONFIG (UNCHANGED BRANDING)
+# CONFIG
 # =========================================================
 st.set_page_config(page_title="DealGenie AI Shopping", layout="wide")
 
 # =========================================================
-# YOUR ORIGINAL THEME (PRESERVED)
+# THEME (UNCHANGED)
 # =========================================================
 st.markdown("""
 <style>
@@ -36,18 +36,11 @@ st.markdown("""
     margin-bottom:20px;
 }
 
-.card {
-    background:#111;
-    border-radius:14px;
-    padding:10px;
-    border:1px solid #222;
-}
-
 </style>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# HERO (UNCHANGED BRAND)
+# HERO
 # =========================================================
 st.markdown("""
 <div class="hero">
@@ -57,51 +50,27 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =========================================================
-# SAFE STATE
+# SESSION STATE
 # =========================================================
 if "df" not in st.session_state:
     st.session_state.df = None
 
 # =========================================================
-# INTENT DETECTION (ONLY AI UPGRADE)
+# SIDEBAR FILTERS
 # =========================================================
-def detect_intent(q):
-    q = q.lower()
+st.sidebar.markdown("## 🎛 Filters")
 
-    if any(x in q for x in ["tshirt", "t-shirt", "tee"]):
-        return "tshirt"
-    if any(x in q for x in ["shoe", "sneaker", "running"]):
-        return "shoes"
-    if "mobile" in q:
-        return "mobile"
-    if "laptop" in q:
-        return "laptop"
+api_key = st.sidebar.text_input("SerpAPI Key", type="password")
+country = st.sidebar.selectbox("Country", ["India", "US"])
+max_products = st.sidebar.slider("Max Products", 5, 40, 10)
 
-    return "generic"
+min_price = st.sidebar.number_input("Min Price", 0)
+max_price = st.sidebar.number_input("Max Price", 100000)
+
+query = st.text_input("🔎 Search Product")
 
 # =========================================================
-# RELEVANCE FILTER (SMART BUT SAFE)
-# =========================================================
-def is_relevant(title, intent):
-
-    t = str(title).lower()
-
-    mapping = {
-        "tshirt": ["tshirt", "t-shirt", "tee", "shirt", "polo"],
-        "shoes": ["shoe", "sneaker", "running"],
-        "mobile": ["mobile", "phone"],
-        "laptop": ["laptop"]
-    }
-
-    keywords = mapping.get(intent, [])
-
-    if not keywords:
-        return True
-
-    return any(k in t for k in keywords)
-
-# =========================================================
-# FETCH (UNCHANGED)
+# FETCH DATA
 # =========================================================
 def fetch(q, api_key, country):
 
@@ -121,69 +90,198 @@ def fetch(q, api_key, country):
     items = []
 
     for x in results:
+        price_text = x.get("price") or "0"
+        price_num = int(re.sub(r"[^\d]", "", str(price_text)) or 0)
+
         items.append({
             "Product": x.get("title"),
-            "Price": x.get("price"),
+            "Price": price_text,
+            "PriceNum": price_num,
             "Link": x.get("link"),
             "Image": x.get("thumbnail"),
-            "price_num": int(re.sub(r"[^\d]", "", str(x.get("price") or 999999)) or 999999)
+            "Reviews": int(re.sub(r"[^\d]", "", str(x.get("reviews") or 0)) or 0)
         })
 
     return pd.DataFrame(items)
 
 # =========================================================
-# AI ENGINE (ONLY LOGIC UPGRADE)
+# FILTERS
 # =========================================================
-def smart_pick(df, query):
+def apply_filters(df):
 
-    intent = detect_intent(query)
+    if df is None or df.empty:
+        return df
+
+    df = df[(df["PriceNum"] >= min_price) & (df["PriceNum"] <= max_price)]
+
+    return df
+
+# =========================================================
+# INTENT DETECTION
+# =========================================================
+def detect_intent(q):
+
+    q = q.lower()
+
+    if any(x in q for x in ["tshirt", "t-shirt", "tee"]):
+        return "tshirt"
+    if any(x in q for x in ["shoe", "sneaker", "running"]):
+        return "shoes"
+    if "mobile" in q:
+        return "mobile"
+    if "laptop" in q:
+        return "laptop"
+
+    return "generic"
+
+# =========================================================
+# RELEVANCE CHECK
+# =========================================================
+def is_relevant(title, intent):
+
+    t = str(title).lower()
+
+    mapping = {
+        "tshirt": ["tshirt", "t-shirt", "tee", "shirt", "polo"],
+        "shoes": ["shoe", "sneaker", "running"],
+        "mobile": ["mobile", "phone"],
+        "laptop": ["laptop"]
+    }
+
+    keys = mapping.get(intent, [])
+
+    if not keys:
+        return True
+
+    return any(k in t for k in keys)
+
+# =========================================================
+# GPT STYLE EXPLANATION LAYER
+# =========================================================
+def explain(row, intent, query):
+
+    q = query.lower()
+    reasons = []
+
+    reasons.append(f"Matches intent: {intent}")
+
+    if row["PriceNum"] < 1000:
+        reasons.append("Budget-friendly option")
+    elif row["PriceNum"] < 3000:
+        reasons.append("Balanced price-performance")
+    else:
+        reasons.append("Premium quality category")
+
+    if row["Reviews"] > 1000:
+        reasons.append("Highly trusted by buyers")
+
+    if "best" in q:
+        reasons.append("You asked for best option, not cheapest")
+
+    return " | ".join(reasons)
+
+# =========================================================
+# COMPARISON MODE
+# =========================================================
+def compare(df, q):
+
+    q = q.lower()
+    brands = ["nike", "puma", "adidas", "reebok"]
+
+    found = [b for b in brands if b in q]
+
+    if len(found) < 2:
+        return None
+
+    b1, b2 = found[:2]
+
+    g1 = df[df["Product"].str.lower().str.contains(b1)]
+    g2 = df[df["Product"].str.lower().str.contains(b2)]
+
+    if g1.empty or g2.empty:
+        return None
+
+    p1 = g1.sort_values("PriceNum").iloc[0]
+    p2 = g2.sort_values("PriceNum").iloc[0]
+
+    winner = b1 if p1["Reviews"] >= p2["Reviews"] else b2
+
+    return f"""
+🆚 Comparison: {b1.upper()} vs {b2.upper()}
+
+📦 {b1.title()} → {p1['Product']} ({p1['Price']})
+📦 {b2.title()} → {p2['Product']} ({p2['Price']})
+
+🏆 Winner: {winner.upper()}
+💡 Reason: Better trust + popularity balance
+"""
+
+# =========================================================
+# AI ENGINE
+# =========================================================
+def assistant(q, df):
+
+    intent = detect_intent(q)
+
+    comp = compare(df, q)
+    if comp:
+        return comp
 
     df = df[df["Product"].apply(lambda x: is_relevant(x, intent))]
 
     if df.empty:
-        return None, intent
+        return "❌ No relevant products found."
 
-    best = df.sort_values("price_num").iloc[0]
+    best = df.sort_values("PriceNum").iloc[0]
 
-    return best, intent
+    return f"""
+🔥 Best Pick:
+👉 {best['Product']}
+💰 {best['Price']}
+
+🧠 Why this is better for YOU:
+{explain(best, intent, q)}
+"""
 
 # =========================================================
-# INPUTS
+# SAFE BUTTON
 # =========================================================
-api_key = st.sidebar.text_input("SerpAPI Key", type="password")
-country = st.sidebar.selectbox("Country", ["India", "US"])
+def safe_buy(url):
 
-query = st.text_input("🔎 Search Product")
+    if not url:
+        st.button("🛒 No Link Available", disabled=True)
+    else:
+        st.link_button("🛒 Buy Now", url)
 
 # =========================================================
 # MAIN
 # =========================================================
-if st.button("🚀 Start AI Shopping"):
+if st.button("🚀 Search Product"):
 
     if not api_key or not query:
-        st.warning("Enter API key and product")
+        st.warning("Enter API key + product")
         st.stop()
 
     df = fetch(query, api_key, country)
 
-    best, intent = smart_pick(df, query)
+    df = apply_filters(df)
 
     st.session_state.df = df
 
-    # =====================================================
-    # KEEP YOUR ORIGINAL DISPLAY STYLE
-    # =====================================================
+    if df.empty:
+        st.warning("No products found")
+        st.stop()
+
+    best = df.sort_values("PriceNum").iloc[0]
+
     st.markdown("## 🔥 Best Deal")
 
-    if best is not None:
+    st.image(best["Image"], width=300)
+    st.markdown(f"### {best['Product']}")
+    st.write(best["Price"])
 
-        st.image(best["Image"], width=300)
-        st.markdown(f"### {best['Product']}")
-        st.write(best["Price"])
+    safe_buy(best["Link"])
 
-        st.markdown(f"🧠 Detected Intent: **{intent}**")
-
-        st.link_button("🛒 Buy Now", best["Link"])
-
-    else:
-        st.warning("No relevant products found")
+    # AI OUTPUT
+    st.markdown("## 🤖 AI Insight")
+    st.write(assistant(query, df))
