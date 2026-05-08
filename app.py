@@ -14,7 +14,6 @@ st.set_page_config(page_title="DealGenie", layout="wide")
 # =========================================================
 st.markdown("""
 <style>
-
 .stApp {
     background: radial-gradient(circle at top,#0b0b0b,#000);
     color:white;
@@ -36,7 +35,6 @@ st.markdown("""
     border-radius:20px;
     margin-bottom:20px;
 }
-
 </style>
 """, unsafe_allow_html=True)
 
@@ -51,13 +49,13 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =========================================================
-# SAFE SESSION STATE
+# SAFE STATE
 # =========================================================
 if "df" not in st.session_state:
     st.session_state.df = None
 
 if "memory" not in st.session_state:
-    st.session_state.memory = {}
+    st.session_state.memory = {"disliked": set()}
 
 st.session_state.memory.setdefault("disliked", set())
 
@@ -68,7 +66,7 @@ if "last_a" not in st.session_state:
     st.session_state.last_a = ""
 
 # =========================================================
-# SIDEBAR INPUTS
+# SIDEBAR
 # =========================================================
 api_key = st.sidebar.text_input("SerpAPI Key", type="password")
 country = st.sidebar.selectbox("Country", ["India", "US"])
@@ -77,7 +75,7 @@ max_products = st.sidebar.slider("Deals", 5, 40, 5)
 query = st.text_input("🔎 Search Products")
 
 # =========================================================
-# 🎤 VOICE (CLEAN SIDEBAR BUTTON ONLY)
+# 🎤 VOICE (CLEAN)
 # =========================================================
 voice_html = """
 <button onclick="startVoice()" style="
@@ -89,8 +87,7 @@ border-radius:10px;
 font-weight:800;
 cursor:pointer;
 width:100%;
-font-size:16px;
-">
+font-size:16px;">
 Speak
 </button>
 
@@ -99,7 +96,7 @@ function startVoice() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
-        alert("Voice not supported in this browser");
+        alert("Voice not supported");
         return;
     }
 
@@ -109,7 +106,6 @@ function startVoice() {
 
     recognition.onresult = function(event) {
         const text = event.results[0][0].transcript;
-
         const input = window.parent.document.querySelector('input[type="text"]');
         input.value = text;
         input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -120,6 +116,46 @@ function startVoice() {
 
 st.sidebar.markdown("## 🎤")
 components.html(voice_html, height=80)
+
+# =========================================================
+# INTENT DETECTION (KEY FIX)
+# =========================================================
+def detect_intent(q):
+    q = q.lower()
+
+    if "tshirt" in q or "t-shirt" in q:
+        return "tshirt"
+    if "shoe" in q or "sneaker" in q:
+        return "shoes"
+    if "mobile" in q:
+        return "mobile"
+    if "laptop" in q:
+        return "laptop"
+
+    return None
+
+
+def filter_by_intent(df, intent):
+
+    if intent is None:
+        return df
+
+    mapping = {
+        "tshirt": ["tshirt", "t-shirt", "tee", "shirt"],
+        "shoes": ["shoe", "sneaker", "running"],
+        "mobile": ["mobile", "phone"],
+        "laptop": ["laptop"]
+    }
+
+    keys = mapping.get(intent, [])
+
+    mask = df["Product"].str.lower().apply(
+        lambda x: any(k in x for k in keys)
+    )
+
+    filtered = df[mask]
+
+    return filtered if not filtered.empty else df
 
 # =========================================================
 # HELPERS
@@ -165,23 +201,19 @@ def fetch(q):
         items.append({
             "Product": x.get("title"),
             "Price": x.get("price"),
-            "Platform": x.get("source"),
-            "Rating": x.get("rating", 0),
-            "Reviews": x.get("reviews", 0),
-            "Link": x.get("link") or x.get("product_link"),
+            "Link": x.get("link"),
             "Image": x.get("thumbnail") or "https://via.placeholder.com/300",
             "price_num": price_num(x.get("price")),
-            "rating_num": safe_float(x.get("rating")),
-            "reviews_num": reviews_num(x.get("reviews"))
+            "rating_num": safe_float(x.get("rating", 0)),
+            "reviews_num": reviews_num(x.get("reviews", 0))
         })
 
     return pd.DataFrame(items)
 
 # =========================================================
-# MEMORY FILTER (SAFE)
+# MEMORY FILTER
 # =========================================================
 def apply_memory(df):
-
     disliked = st.session_state.memory.get("disliked", set())
 
     for b in disliked:
@@ -190,48 +222,35 @@ def apply_memory(df):
     return df if not df.empty else df
 
 # =========================================================
-# WHY BUY
-# =========================================================
-def why_buy(r):
-    if r["rating_num"] >= 4.3:
-        return "Highly trusted"
-    if r["reviews_num"] > 1000:
-        return "Very popular"
-    if r["price_num"] < 2000:
-        return "Great value"
-    return "Balanced option"
-
-# =========================================================
-# AI ASSISTANT (LAST ONLY)
+# AI ASSISTANT
 # =========================================================
 def assistant(q, df):
 
     if df is None or df.empty:
         return "Search products first."
 
-    ql = q.lower()
-
     st.session_state.last_q = q
 
-    brands = ["puma", "nike", "adidas", "reebok"]
+    ql = q.lower()
+
+    # store dislikes
+    brands = ["puma", "nike", "adidas"]
 
     for b in brands:
         if f"dont want {b}" in ql or f"don't want {b}" in ql:
             st.session_state.memory["disliked"].add(b)
             return f"🚫 Will avoid {b}"
 
+    intent = detect_intent(q)
+
+    df = filter_by_intent(df, intent)
     df = apply_memory(df)
 
-    if "compare" in ql or "vs" in ql:
-        top = df.sort_values("ai_score", ascending=False).head(2)
-        a, b = top.iloc[0], top.iloc[1]
-        return f"🆚 {a['Product']} is better than {b['Product']}"
+    if df.empty:
+        return "❌ No relevant products found."
 
-    if "under" in ql or "budget" in ql:
-        best = df.sort_values("price_num").head(3)
-        return "💸 " + ", ".join(best["Product"].tolist())
+    best = df.sort_values("price_num").iloc[0]
 
-    best = df.sort_values("ai_score", ascending=False).iloc[0]
     return f"🔥 Best pick: {best['Product']}"
 
 # =========================================================
@@ -249,40 +268,32 @@ if st.button("🚀 SEARCH DEALS"):
         st.warning("No results found")
         st.stop()
 
-    df["ai_score"] = df.apply(ai_score, axis=1)
-
     df = apply_memory(df)
 
     st.session_state.df = df
 
-    pool = df.sort_values("ai_score", ascending=False).head(max_products).to_dict("records")
-
-    featured = pool.pop(0)
+    best = df.iloc[0]
 
     st.markdown("## 🔥 Best Deal")
-    st.image(featured["Image"], width=300)
-    st.write(featured["Product"])
-    st.write(featured["Price"])
-    st.link_button("🛒 Buy Now", featured["Link"])
+    st.image(best["Image"], width=300)
+    st.write(best["Product"])
+    st.write(best["Price"])
+    st.link_button("🛒 Buy Now", best["Link"])
 
 # =========================================================
-# AI PANEL (LAST ONLY, NO HISTORY)
+# AI PANEL (NO HISTORY)
 # =========================================================
 st.sidebar.markdown("## 🤖 DealGenie AI")
 
-ask = st.sidebar.text_input("Ask")
+ask = st.sidebar.text_input("Ask AI")
 
-if st.sidebar.button("Ask AI"):
-
+if st.sidebar.button("Ask"):
     df = st.session_state.get("df", None)
-
     reply = assistant(ask, df)
 
     st.session_state.last_a = reply
 
-# =========================================================
-# SHOW ONLY LAST Q/A
-# =========================================================
+# show last only
 if st.session_state.last_q:
     st.sidebar.markdown("### 🧑 You")
     st.sidebar.write(st.session_state.last_q)
