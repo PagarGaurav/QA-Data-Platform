@@ -4,60 +4,107 @@ import requests
 import re
 
 # =========================================================
-# CONFIG (UNCHANGED UI)
+# CONFIG
 # =========================================================
 st.set_page_config(page_title="DealGenie", layout="wide")
 
 # =========================================================
-# YOUR ORIGINAL HERO (UNCHANGED)
+# YOUR ORIGINAL BLACK THEME (PRESERVED)
+# =========================================================
+st.markdown("""
+<style>
+
+/* BLACK THEME ONLY */
+.stApp {
+    background: #0b0b0b;
+    color: white;
+}
+
+/* SIDEBAR DARK (PRESERVED LOOK) */
+section[data-testid="stSidebar"] {
+    background-color: #111 !important;
+    color: white;
+}
+
+/* HERO (unchanged look) */
+.hero {
+    background: linear-gradient(90deg, rgba(0,0,0,0.85), rgba(0,0,0,0.4)),
+    url('https://images.unsplash.com/photo-1607082350899-7e105aa886ae');
+    background-size: cover;
+    padding: 50px;
+    border-radius: 20px;
+    margin-bottom: 20px;
+}
+
+/* =========================================================
+   ONLY FIX: CARD UNIFORM SIZE (NO COLOR CHANGE)
+   ========================================================= */
+
+.card {
+    height: 440px;
+    background: #141414;
+    border-radius: 12px;
+    padding: 10px;
+    border: 1px solid #222;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.card img {
+    height: 220px;
+    width: 100%;
+    object-fit: cover;
+    border-radius: 10px;
+}
+
+.title {
+    height: 40px;
+    overflow: hidden;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.price {
+    min-height: 18px;
+    color: #00ffae;
+    font-weight: 700;
+}
+
+.rating {
+    height: 18px;
+    font-size: 12px;
+    color: #aaa;
+}
+
+/* BUY BUTTON (RED BUT FITS BLACK THEME) */
+.buy {
+    display: block;
+    margin-top: 10px;
+    background: #ff2d2d;
+    color: white;
+    text-align: center;
+    padding: 8px;
+    border-radius: 8px;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.buy:hover {
+    background: #ff0000;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+# =========================================================
+# HERO
 # =========================================================
 st.markdown("""
 <div class="hero">
 <h1>🛍 DealGenie</h1>
 <h3>AI Shopping Assistant</h3>
 </div>
-""", unsafe_allow_html=True)
-
-# =========================================================
-# ONLY FIX: CARD STABILITY CSS (NO COLOR / UI CHANGE)
-# =========================================================
-st.markdown("""
-<style>
-
-/* ONLY STRUCTURE FIX - NO DESIGN CHANGE */
-
-/* FORCE EQUAL CARD HEIGHT */
-.card {
-    height: 440px !important;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-}
-
-/* FIX IMAGE HEIGHT */
-.card img {
-    height: 220px !important;
-    width: 100%;
-    object-fit: cover;
-}
-
-/* TITLE FIX (PREVENT EXPANSION) */
-.title {
-    height: 40px;
-    overflow: hidden;
-}
-
-/* RATING FIX (RESERVED SPACE) */
-.rating {
-    height: 18px;
-}
-
-/* PRICE FIX */
-.price {
-    min-height: 18px;
-}
-
-</style>
 """, unsafe_allow_html=True)
 
 # =========================================================
@@ -124,7 +171,7 @@ if st.button("Search"):
     st.markdown("## 🔥 Top Deals")
 
     # =====================================================
-    # YOUR ORIGINAL GRID (UNCHANGED STRUCTURE)
+    # STABLE GRID (NO LAYOUT SHIFT ANYMORE)
     # =====================================================
     for i in range(0, len(df), 4):
 
@@ -137,25 +184,17 @@ if st.button("Search"):
 
                 st.markdown('<div class="card">', unsafe_allow_html=True)
 
-                # IMAGE
                 st.image(
                     r["Image"] if r["Image"] else "https://via.placeholder.com/300",
                     use_container_width=True
                 )
 
-                # TITLE (FIXED SPACE ONLY)
-                st.markdown(
-                    f"<div class='title'>{r['Product']}</div>",
-                    unsafe_allow_html=True
-                )
+                st.markdown(f"<div class='title'>{r['Product']}</div>",
+                            unsafe_allow_html=True)
 
-                # PRICE
-                st.markdown(
-                    f"<div class='price'>💰 {r['Price']}</div>",
-                    unsafe_allow_html=True
-                )
+                st.markdown(f"<div class='price'>💰 {r['Price']}</div>",
+                            unsafe_allow_html=True)
 
-                # RATING (FIXED SPACE ONLY)
                 rating = r["Rating"] if r.get("Rating") else ""
 
                 st.markdown(
@@ -163,9 +202,12 @@ if st.button("Search"):
                     unsafe_allow_html=True
                 )
 
-                # BUY BUTTON (UNCHANGED LOGIC)
                 if r["Link"]:
-                    st.link_button("🛒 Buy Now", r["Link"])
+                    st.markdown(f"""
+                    <a class="buy" href="{r['Link']}" target="_blank">
+                        🛒 Buy Now
+                    </a>
+                    """, unsafe_allow_html=True)
                 else:
                     st.button("No Link", disabled=True)
 
