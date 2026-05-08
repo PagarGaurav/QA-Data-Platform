@@ -49,7 +49,7 @@ img {
 """, unsafe_allow_html=True)
 
 # =========================================================
-# HEADER (UPDATED NAME ONLY)
+# HEADER
 # =========================================================
 st.markdown("# 🛍 DealGenie")
 st.markdown("### 🧠 DealGenie AI Shopping Assistant")
@@ -75,7 +75,7 @@ search_btn = st.button("Search")
 client = OpenAI(api_key=openai_key) if openai_key else None
 
 # =========================================================
-# SESSION STATE
+# SESSION STATE (IMPORTANT)
 # =========================================================
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
@@ -151,32 +151,37 @@ def rank(df, intent):
     return df.sort_values("AI_Score", ascending=False)
 
 # =========================================================
-# GPT COPILOT
+# GPT COPILOT (SAFE)
 # =========================================================
 def ask_dealgenie(question, context=""):
 
     if client is None:
-        return "⚠️ Enter OpenAI API key in sidebar to enable AI Assistant."
+        return "⚠️ Enter OpenAI API key to enable AI Assistant."
 
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {
-                "role": "system",
-                "content": "You are DealGenie AI Shopping Assistant. Help users choose and compare products."
-            },
-            {
-                "role": "user",
-                "content": f"{question}\n\nContext:\n{context}"
-            }
-        ]
-    )
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are DealGenie AI Shopping Assistant. Help users compare and choose products."
+                },
+                {
+                    "role": "user",
+                    "content": f"{question}\n\nContext:\n{context}"
+                }
+            ]
+        )
+        return response.choices[0].message.content
 
-    return response.choices[0].message.content
+    except Exception as e:
+        return f"⚠️ Error: {str(e)}"
 
 # =========================================================
 # MAIN FLOW
 # =========================================================
+df = pd.DataFrame()
+
 if search_btn:
 
     if not api_key or not query:
@@ -210,8 +215,10 @@ if search_btn:
 
             with col:
 
-                st.image(r["Image"] if r["Image"] else "https://via.placeholder.com/300",
-                         use_container_width=True)
+                st.image(
+                    r["Image"] if r["Image"] else "https://via.placeholder.com/300",
+                    use_container_width=True
+                )
 
                 st.markdown(f"**{r['Product']}**")
                 st.write(f"💰 {r['Price']}")
@@ -223,20 +230,20 @@ if search_btn:
                     st.button("No Link", disabled=True)
 
 # =========================================================
-# CHAT COPILOT (UNCHANGED FUNCTIONALITY)
+# 💬 SIDEBAR COPILOT (FIXED WORKING)
 # =========================================================
-st.markdown("---")
-st.markdown("## 💬 Ask DealGenie")
+st.sidebar.markdown("---")
+st.sidebar.markdown("## 💬 Ask DealGenie")
 
-user_q = st.text_input("Ask: compare, suggest, or decide", key="copilot_input")
+user_q = st.sidebar.text_input("Ask: compare, suggest, or decide", key="sidebar_chat")
 
-if st.button("Ask Assistant"):
+if st.sidebar.button("Ask Assistant"):
 
     if user_q.strip():
 
         context = ""
 
-        if "df" in locals() and df is not None and not df.empty:
+        if df is not None and not df.empty:
             context = df.head(5)[["Product", "Price", "Rating"]].to_string()
 
         answer = ask_dealgenie(user_q, context)
@@ -244,9 +251,11 @@ if st.button("Ask Assistant"):
         st.session_state.chat_history.append(("You", user_q))
         st.session_state.chat_history.append(("DealGenie", answer))
 
-# DISPLAY CHAT
-for role, msg in st.session_state.chat_history:
+# DISPLAY CHAT IN SIDEBAR
+st.sidebar.markdown("### 🧠 Conversation")
+
+for role, msg in st.session_state.chat_history[-10:]:
     if role == "You":
-        st.markdown(f"**🧑 You:** {msg}")
+        st.sidebar.markdown(f"🧑 {msg}")
     else:
-        st.markdown(f"**🤖 DealGenie:** {msg}")
+        st.sidebar.markdown(f"🤖 {msg}")
