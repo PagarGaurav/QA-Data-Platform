@@ -50,13 +50,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =========================================================
-# SESSION STATE
-# =========================================================
-if "df" not in st.session_state:
-    st.session_state.df = None
-
-# =========================================================
-# SIDEBAR (ONLY COUNT FILTER)
+# SIDEBAR
 # =========================================================
 st.sidebar.markdown("## 🎛 Controls")
 
@@ -82,7 +76,7 @@ def fetch(q, api_key, country):
     r = requests.get("https://serpapi.com/search", params=params)
     data = r.json()
 
-    results = data.get("shopping_results", [])  # NO slicing here
+    results = data.get("shopping_results", [])
 
     items = []
 
@@ -101,15 +95,15 @@ def fetch(q, api_key, country):
     return pd.DataFrame(items)
 
 # =========================================================
-# INTENT DETECTION
+# INTENT
 # =========================================================
 def detect_intent(q):
 
     q = q.lower()
 
-    if any(x in q for x in ["tshirt", "t-shirt", "tee"]):
+    if "tshirt" in q or "tee" in q:
         return "tshirt"
-    if any(x in q for x in ["shoe", "sneaker", "running"]):
+    if "shoe" in q or "sneaker" in q:
         return "shoes"
     if "mobile" in q:
         return "mobile"
@@ -119,14 +113,14 @@ def detect_intent(q):
     return "generic"
 
 # =========================================================
-# RELEVANCE FILTER
+# FILTER
 # =========================================================
 def is_relevant(title, intent):
 
     t = str(title).lower()
 
     mapping = {
-        "tshirt": ["tshirt", "t-shirt", "tee", "shirt", "polo"],
+        "tshirt": ["tshirt", "t-shirt", "tee", "shirt"],
         "shoes": ["shoe", "sneaker", "running"],
         "mobile": ["mobile", "phone"],
         "laptop": ["laptop"]
@@ -140,34 +134,23 @@ def is_relevant(title, intent):
     return any(k in t for k in keys)
 
 # =========================================================
-# SIMPLE SCORING (AI RANKING)
+# AI SCORE
 # =========================================================
 def score(row):
-
     return 1 / (row["PriceNum"] + 1)
 
 # =========================================================
-# SAFE BUY BUTTON
+# SAFE BUY BUTTON (FIXED DUPLICATE ERROR)
 # =========================================================
-def safe_buy(url):
+def safe_buy(url, key):
 
     if not url:
-        st.button("🛒 No Link Available", disabled=True)
+        st.button("🛒 No Link Available", disabled=True, key=f"no_{key}")
     else:
-        st.link_button("🛒 Buy Now", url)
+        st.link_button("🛒 Buy Now", url, key=f"buy_{key}")
 
 # =========================================================
-# LIMIT FUNCTION (IMPORTANT FIX)
-# =========================================================
-def apply_limit(df, limit):
-
-    if df is None or df.empty:
-        return df
-
-    return df.head(limit)
-
-# =========================================================
-# MAIN FLOW (CORRECT ORDER FIXED)
+# MAIN
 # =========================================================
 if st.button("🚀 Search Product"):
 
@@ -175,51 +158,52 @@ if st.button("🚀 Search Product"):
         st.warning("Enter API key + product")
         st.stop()
 
-    # 1. FETCH
     df = fetch(query, api_key, country)
 
     if df.empty:
         st.warning("No products found")
         st.stop()
 
-    # 2. FILTER BY INTENT
     intent = detect_intent(query)
+
     df = df[df["Product"].apply(lambda x: is_relevant(x, intent))]
 
     if df.empty:
         st.warning("No relevant products found")
         st.stop()
 
-    # 3. AI RANKING
     df["Score"] = df.apply(score, axis=1)
     df = df.sort_values("Score", ascending=False)
 
-    # 4. APPLY LIMIT (THIS FIXES YOUR ISSUE)
-    df = apply_limit(df, max_products)
-
-    st.session_state.df = df
+    df = df.head(max_products)
 
     # =====================================================
-    # DISPLAY RESULTS
+    # BEST DEAL
     # =====================================================
-    st.markdown("## 🔥 Best Deal")
-
     best = df.iloc[0]
+
+    st.markdown("## 🔥 Best Deal")
 
     st.image(best["Image"], width=300)
     st.markdown(f"### {best['Product']}")
     st.write(best["Price"])
 
-    safe_buy(best["Link"])
+    safe_buy(best["Link"], 0)
 
+    # =====================================================
+    # MORE DEALS
+    # =====================================================
     st.markdown("## 🛍 More Deals")
 
     cols = st.columns(3)
 
-    for i, r in df.iterrows():
+    for i, r in enumerate(df.iterrows()):
+
+        idx, row = r
 
         with cols[i % 3]:
-            st.image(r["Image"], use_container_width=True)
-            st.write(r["Product"])
-            st.write(r["Price"])
-            safe_buy(r["Link"])
+            st.image(row["Image"], use_container_width=True)
+            st.write(row["Product"])
+            st.write(row["Price"])
+
+            safe_buy(row["Link"], i + 1)
