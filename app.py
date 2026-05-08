@@ -9,7 +9,7 @@ import re
 st.set_page_config(page_title="DealGenie", layout="wide")
 
 # =========================================================
-# STYLE (SAFE - NO BROKEN DIVS)
+# STYLE FIX (IMPORTANT PART)
 # =========================================================
 st.markdown("""
 <style>
@@ -30,18 +30,31 @@ st.markdown("""
     margin-bottom:20px;
 }
 
-/* CARD STYLE */
+/* CARD FIXED SIZE */
 .card {
     background:#111;
     border-radius:14px;
     padding:12px;
     border:1px solid #222;
-    height:520px;
+
+    height: 520px;          /* 🔥 FIXED HEIGHT */
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
 }
 
 /* IMAGE FIX */
-img {
+.card img {
+    height: 220px;          /* 🔥 SAME IMAGE HEIGHT */
+    object-fit: cover;      /* crop instead of stretch */
     border-radius:10px;
+}
+
+/* TEXT FIX */
+.product-title {
+    font-size:14px;
+    font-weight:600;
+    min-height: 40px;      /* prevents shifting */
 }
 
 /* BUY BUTTON */
@@ -123,7 +136,7 @@ def fetch(q, api_key, country):
     return pd.DataFrame(items)
 
 # =========================================================
-# FILTER
+# FILTER + SCORE
 # =========================================================
 def is_relevant(title, q):
     return q.lower().split()[0] in str(title).lower()
@@ -132,7 +145,7 @@ def score(row):
     return 1 / (row["PriceNum"] + 1)
 
 # =========================================================
-# MAIN UI
+# MAIN
 # =========================================================
 if st.button("🔎 Search Product"):
 
@@ -150,12 +163,12 @@ if st.button("🔎 Search Product"):
     df["Score"] = df.apply(score, axis=1)
     df = df.sort_values("Score", ascending=False).head(max_products)
 
-    st.markdown("## 🔥 Best Deals")
-
     df = df.reset_index(drop=True)
 
+    st.markdown("## 🔥 Best Deals")
+
     # =====================================================
-    # SAFE GRID (NO BLACK BOX ISSUE)
+    # FIXED GRID
     # =====================================================
     for i in range(0, len(df), 3):
 
@@ -170,17 +183,24 @@ if st.button("🔎 Search Product"):
 
                 img = r["Image"] if r["Image"] else "https://via.placeholder.com/300"
 
-                st.image(img, use_container_width=True)
+                st.image(img)
 
-                st.markdown(f"**{str(r['Product'])[:60]}**")
+                title = str(r['Product'])[:60] if r['Product'] else "No Title"
+
+                st.markdown(f"<div class='product-title'>{title}</div>", unsafe_allow_html=True)
 
                 st.write(f"💰 {r['Price']}")
 
+                # FIX: reserve space so layout doesn't jump
                 if r.get("Rating"):
                     st.write(f"⭐ {r['Rating']} / 5")
+                else:
+                    st.write("⭐ -")
 
                 if r.get("Reviews"):
                     st.caption(f"{r['Reviews']} reviews")
+                else:
+                    st.caption(" ")
 
                 if r["Link"]:
                     st.link_button("🛒 Buy Now", r["Link"])
