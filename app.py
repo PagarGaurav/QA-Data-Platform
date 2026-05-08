@@ -290,46 +290,71 @@ def ask_dealgenie(question, context=""):
     if client is None:
         return "⚠️ Enter OpenAI API key."
 
-    if context.strip() == "":
-        return "⚠️ Search products first."
-
     try:
 
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
+        if context.strip() != "":
 
-                {
-                    "role": "system",
-                    "content": """
+            prompt = f"""
 You are DealGenie AI Shopping Assistant.
 
+You help users with:
+- Electronics
+- Phones
+- Fashion
+- Cosmetics
+- Skincare
+- Beauty products
+- Makeup recommendations
+- Brand comparisons
+- Value for money shopping
+- Product suggestions
+
 IMPORTANT:
-- ONLY answer from CURRENT product search results.
-- NEVER use previous searches or memory.
-- If question is unrelated, ask user to search product first.
+Use CURRENT product results whenever relevant.
 
-Return:
-1. Best Product
-2. Cheapest Product
-3. Best Rated Product
-4. Best Store
-
-Keep answers concise.
-"""
-                },
-
-                {
-                    "role": "user",
-                    "content": f"""
 Current Product Search Results:
 {context}
 
 User Question:
 {question}
-"""
-                }
 
+Keep answers concise and practical.
+"""
+
+        else:
+
+            prompt = f"""
+You are DealGenie AI Shopping Assistant.
+
+You help users with:
+- Best phones
+- Best laptops
+- Cosmetics
+- Skincare
+- Beauty products
+- Makeup brands
+- Fashion
+- Budget shopping
+- Brand comparisons
+- Shopping advice
+
+User Question:
+{question}
+
+Keep answers concise and practical.
+"""
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an expert AI shopping assistant."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
             ]
         )
 
@@ -353,23 +378,18 @@ if st.button("🔎 Search Product"):
         st.warning("No products found")
         st.stop()
 
-    # FILTER PRICE
     df = df[
         (df["PriceNum"] >= price_range[0]) &
         (df["PriceNum"] <= price_range[1])
     ]
 
-    # LIMIT
     df = df.head(max_products)
 
-    # RESET INDEX
     df = df.reset_index(drop=True)
 
-    # TAGS
     cheapest_index = df["PriceNum"].idxmin()
     best_rated_index = df["RatingNum"].idxmax()
 
-    # SAVE SESSION
     st.session_state["products_df"] = df
     st.session_state["last_answer"] = ""
 
@@ -409,7 +429,6 @@ if st.button("🔎 Search Product"):
                 )
 
                 st.write(f"💰 {r['Price']}")
-
                 st.write(f"⭐ {r['Rating']}")
 
                 st.markdown(
@@ -417,14 +436,12 @@ if st.button("🔎 Search Product"):
                     unsafe_allow_html=True
                 )
 
-                # CHEAPEST TAG
                 if idx == cheapest_index:
                     st.markdown(
                         "<div class='badge'>💰 Cheapest Deal</div>",
                         unsafe_allow_html=True
                     )
 
-                # BEST RATED TAG
                 if idx == best_rated_index:
                     st.markdown(
                         "<div class='badge'>🏆 Best Rated</div>",
